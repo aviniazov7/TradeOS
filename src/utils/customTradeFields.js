@@ -104,12 +104,11 @@ function nextFieldId(fields, seq) {
 }
 
 /**
- * Add one field definition. New ids are Premium-only. The returned list is
- * what settings/customTradeFields stores.
+ * Add one field definition. Any signed-in account may add one. The returned
+ * list is what settings/customTradeFields stores.
  */
-export function addCustomField(doc, draft, { isPremium = false } = {}) {
+export function addCustomField(doc, draft) {
   const current = normalizeCustomFieldsDoc(doc);
-  if (!isPremium) return { ok: false, error: 'הגדרת שדה חדש זמינה ב-Premium' };
   if (current.fields.length >= MAX_CUSTOM_FIELDS) {
     return { ok: false, error: `אפשר עד ${MAX_CUSTOM_FIELDS} שדות` };
   }
@@ -148,9 +147,8 @@ export function removeCustomField(doc, id) {
  * Change one field's name, type, or options. The id stays, so answers already
  * stored on trades keep pointing at the same field. New ids are not minted.
  */
-export function updateCustomField(doc, id, draft, { isPremium = false } = {}) {
+export function updateCustomField(doc, id, draft) {
   const current = normalizeCustomFieldsDoc(doc);
-  if (!isPremium) return { ok: false, error: 'הגדרת שדה חדש זמינה ב-Premium' };
   const index = current.fields.findIndex((field) => field.id === id);
   if (index < 0) return { ok: false, error: 'השדה לא נמצא' };
   const name = cleanName(draft?.name);

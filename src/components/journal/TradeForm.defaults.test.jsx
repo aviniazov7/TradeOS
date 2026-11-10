@@ -128,7 +128,6 @@ describe('new trade defaults', () => {
           isOpen
           onClose={() => {}}
           onSave={() => {}}
-          isPremium
           customFieldsReady
           customFields={[field]}
           customFieldsDoc={{ fields: [field], seq: 1 }}

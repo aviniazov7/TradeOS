@@ -30,15 +30,13 @@ vi.mock('../shared/ConfirmDialog', () => ({
 }));
 
 function Host({
-  isPremium = true,
   doc = { fields: [], seq: 0 },
   fields = [],
   ready = true,
   onSave,
-  onUpgrade,
 }) {
   const ui = useCustomTradeFieldEditor({
-    isPremium, doc, fields, ready, onSave, onUpgrade, active: true,
+    doc, fields, ready, onSave, active: true,
   });
   return (
     <div>
@@ -139,7 +137,7 @@ describe('custom fields on the trade form', () => {
 
     let full = { fields: [], seq: 0 };
     for (let i = 0; i < 12; i += 1) {
-      full = addCustomField(full, { name: `שדה ${i + 1}`, type: 'text' }, { isPremium: true });
+      full = addCustomField(full, { name: `שדה ${i + 1}`, type: 'text' });
     }
     onSave.mockClear();
     await view.rerender({ onSave, doc: full, fields: full.fields });
@@ -188,21 +186,26 @@ describe('custom fields on the trade form', () => {
     await view.cleanup();
   });
 
-  it('offers a free account the upgrade instead of a new field', async () => {
+  it('lets a free account add, edit, and delete a field', async () => {
     const onSave = vi.fn(async (next) => next);
-    const onUpgrade = vi.fn();
     const doc = { fields: [{ id: 'f1', name: 'סשן', type: 'text' }], seq: 1 };
-    const view = await mount({ isPremium: false, onSave, onUpgrade, doc, fields: doc.fields });
-    expect(view.el.textContent).toContain('סשן');
-    expect(view.el.querySelector('[aria-label="מחיקת סשן"]')).toBeNull();
-    expect(view.el.querySelector('[data-testid="custom-field-form"]')).toBeNull();
+    const view = await mount({ onSave, doc, fields: doc.fields });
+    expect(view.el.textContent).not.toContain('שדרג ל-Premium');
+    expect(view.el.querySelector('[aria-label="מחיקת סשן"]')).toBeTruthy();
+    expect(view.el.querySelector('[aria-label="עריכת סשן"]')).toBeTruthy();
+
     await act(async () => { buttonNamed('+ שדה משלך').click(); });
-    expect(view.el.textContent).toContain('למשל: סטאפ — Breakout / Pullback');
-    expect(view.el.textContent).toContain('שדרג ל-Premium');
-    expect(view.el.querySelector('[data-testid="custom-field-form"]')).toBeNull();
-    await act(async () => { buttonNamed('שדרג ל-Premium').click(); });
-    expect(onUpgrade).toHaveBeenCalled();
-    expect(onSave).not.toHaveBeenCalled();
+    expect(view.el.querySelector('[data-testid="custom-field-form"]')).toBeTruthy();
+    expect(view.el.querySelector('[data-testid="custom-field-upgrade"]')).toBeNull();
+    await act(async () => { typeInto(view.el.querySelector('[aria-label="שם השדה"]'), 'הערה'); });
+    await act(async () => { buttonNamed('הוספת שדה').click(); });
+    expect(onSave).toHaveBeenCalledWith({
+      fields: [
+        { id: 'f1', name: 'סשן', type: 'text' },
+        { id: 'f2', name: 'הערה', type: 'text' },
+      ],
+      seq: 2,
+    });
     await view.cleanup();
   });
 });

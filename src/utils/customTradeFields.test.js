@@ -49,53 +49,45 @@ describe('custom field definitions', () => {
     expect(doc.seq).toBe(3);
   });
 
-  it('lets Premium add a field and refuses a free account', () => {
-    const first = addCustomField({ fields: [], seq: 0 }, { name: ' סשן ', type: 'text' }, { isPremium: true });
+  it('lets any account add a field and keeps the 12-field cap', () => {
+    const first = addCustomField({ fields: [], seq: 0 }, { name: ' סשן ', type: 'text' });
     expect(first.ok).toBe(true);
     expect(first.fields).toEqual([{ id: 'f1', name: 'סשן', type: 'text' }]);
     expect(first.seq).toBe(1);
 
-    const blocked = addCustomField(first, { name: 'עוד', type: 'number' }, { isPremium: false });
-    expect(blocked.ok).toBe(false);
-
     const removed = removeCustomField(first, 'f1');
-    const again = addCustomField(removed, { name: 'ציון', type: 'number' }, { isPremium: true });
+    const again = addCustomField(removed, { name: 'ציון', type: 'number' });
     expect(again.fields[0].id).toBe('f2');
     expect(again.seq).toBe(2);
   });
 
   it('requires options for a select field', () => {
-    const missing = addCustomField({ fields: [], seq: 0 }, { name: 'איכות', type: 'select', options: ' , ' }, { isPremium: true });
+    const missing = addCustomField({ fields: [], seq: 0 }, { name: 'איכות', type: 'select', options: ' , ' });
     expect(missing.ok).toBe(false);
     const saved = addCustomField(
       { fields: [], seq: 0 },
       { name: 'איכות', type: 'select', options: 'A, B, A' },
-      { isPremium: true },
     );
     expect(saved.fields[0].options).toEqual(['A', 'B']);
     const slashed = addCustomField(
       { fields: [], seq: 0 },
       { name: 'סטאפ', type: 'select', options: 'Breakout / Pullback' },
-      { isPremium: true },
     );
     expect(slashed.fields[0].options).toEqual(['Breakout', 'Pullback']);
   });
 
   it('edits a field in place and keeps its id', () => {
-    const first = addCustomField({ fields: [], seq: 0 }, { name: 'סשן', type: 'text' }, { isPremium: true });
-    const edited = updateCustomField(first, 'f1', { name: ' סטאפ ', type: 'select', options: 'Breakout, Pullback, Breakout' }, { isPremium: true });
+    const first = addCustomField({ fields: [], seq: 0 }, { name: 'סשן', type: 'text' });
+    const edited = updateCustomField(first, 'f1', { name: ' סטאפ ', type: 'select', options: 'Breakout, Pullback, Breakout' });
     expect(edited.ok).toBe(true);
     expect(edited.seq).toBe(1);
     expect(edited.fields).toEqual([{ id: 'f1', name: 'סטאפ', type: 'select', options: ['Breakout', 'Pullback'] }]);
 
-    const blocked = updateCustomField(edited, 'f1', { name: 'אחר', type: 'text' }, { isPremium: false });
-    expect(blocked.ok).toBe(false);
-
-    const second = addCustomField(edited, { name: 'ציון', type: 'number' }, { isPremium: true });
-    const clash = updateCustomField(second, 'f2', { name: 'סטאפ', type: 'text' }, { isPremium: true });
+    const second = addCustomField(edited, { name: 'ציון', type: 'number' });
+    const clash = updateCustomField(second, 'f2', { name: 'סטאפ', type: 'text' });
     expect(clash.error).toBe('כבר יש שדה בשם הזה');
-    expect(updateCustomField(second, 'f9', { name: 'אחר', type: 'text' }, { isPremium: true }).ok).toBe(false);
-    const cleared = updateCustomField(second, 'f1', { name: 'סטאפ', type: 'text' }, { isPremium: true });
+    expect(updateCustomField(second, 'f9', { name: 'אחר', type: 'text' }).ok).toBe(false);
+    const cleared = updateCustomField(second, 'f1', { name: 'סטאפ', type: 'text' });
     expect(cleared.fields[0]).toEqual({ id: 'f1', name: 'סטאפ', type: 'text' });
     expect(cleared.seq).toBe(2);
   });

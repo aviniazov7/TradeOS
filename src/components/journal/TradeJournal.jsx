@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from 'react';
 import { lazyWithChunkReload as lazy } from '../../utils/chunkReload';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { m } from 'framer-motion';
 import { Plus, BookOpen, Settings, Undo2, BrainCircuit, ListChecks, Trash2, AlertTriangle, Sparkles, Briefcase, Loader2, Link2, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -114,9 +114,7 @@ function TabFallback() {
 }
 
 export default function TradeJournal() {
-  const navigate = useNavigate();
-  const { user, isPremium } = useAuth();
-  const openPremium = useCallback(() => navigate('/premium'), [navigate]);
+  const { user } = useAuth();
   const { activeJournal, activeJournalId, journals, addJournal } = useJournalContext();
   const demoMode = useDemoMode();
   const {
@@ -958,8 +956,6 @@ export default function TradeJournal() {
             customFieldsReady={customFieldsReady}
             customFieldsDoc={customFieldsDoc}
             onSaveCustomFields={saveCustomFields}
-            isPremium={isPremium}
-            onUpgradeCustomFields={openPremium}
             livePrices={prices} />
         )}
       </Suspense>

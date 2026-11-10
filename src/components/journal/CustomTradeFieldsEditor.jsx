@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Crown, Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape';
 import {
@@ -27,13 +27,11 @@ function sourceDoc(doc, fields) {
 // ticket. The list is still users/{uid}/settings/customTradeFields — this
 // only moves the controls next to the answers.
 export function useCustomTradeFieldEditor({
-  isPremium = false,
   doc,
   fields = [],
   ready = true,
   active = true,
   onSave,
-  onUpgrade,
   onRequestOpen,
 }) {
   const [mode, setMode] = useState(null);
@@ -60,7 +58,7 @@ export function useCustomTradeFieldEditor({
 
   useEffect(() => {
     if (!mode) return;
-    if (mode.kind !== 'upgrade') nameRef.current?.focus();
+    nameRef.current?.focus();
     panelRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [mode]);
 
@@ -85,14 +83,10 @@ export function useCustomTradeFieldEditor({
     setNameAttempted(false);
     setError('');
     setDraft(EMPTY_DRAFT);
-    setMode((current) => {
-      if (!isPremium) return current?.kind === 'upgrade' ? null : { kind: 'upgrade' };
-      return current?.kind === 'add' ? null : { kind: 'add' };
-    });
+    setMode((current) => (current?.kind === 'add' ? null : { kind: 'add' }));
   };
 
   const openEdit = (field) => {
-    if (!isPremium) return;
     onRequestOpen?.();
     setNameAttempted(false);
     setError('');
@@ -115,14 +109,14 @@ export function useCustomTradeFieldEditor({
   };
 
   const submit = async () => {
-    if (busy || !ready || !mode || mode.kind === 'upgrade') return;
+    if (busy || !ready || !mode) return;
     if (nameMissing || nameTooLong) {
       setNameAttempted(true);
       return;
     }
     const result = mode.kind === 'edit'
-      ? updateCustomField(sourceDoc(doc, fields), mode.id, draft, { isPremium })
-      : addCustomField(sourceDoc(doc, fields), draft, { isPremium });
+      ? updateCustomField(sourceDoc(doc, fields), mode.id, draft)
+      : addCustomField(sourceDoc(doc, fields), draft);
     if (!result.ok) {
       setNameAttempted(true);
       setError(result.error);
@@ -141,7 +135,7 @@ export function useCustomTradeFieldEditor({
   };
 
   const confirmDelete = async () => {
-    if (!deleteTarget || !isPremium) return;
+    if (!deleteTarget) return;
     const next = removeCustomField(sourceDoc(doc, fields), deleteTarget.id);
     setBusy(true);
     setError('');
@@ -168,7 +162,7 @@ export function useCustomTradeFieldEditor({
       type="button"
       data-custom-field-trigger=""
       data-testid="add-custom-field"
-      aria-expanded={mode?.kind === 'add' || mode?.kind === 'upgrade'}
+      aria-expanded={mode?.kind === 'add'}
       onClick={openAdd}
       className="inline-flex items-center h-8 px-2.5 rounded-lg border border-border-primary bg-bg-tertiary text-[11px] font-semibold text-text-primary hover:border-border-hover cursor-pointer shrink-0"
     >
@@ -177,34 +171,7 @@ export function useCustomTradeFieldEditor({
   );
 
   let panel = null;
-  if (mode?.kind === 'upgrade') {
-    panel = (
-      <div
-        ref={panelRef}
-        data-popover={deleteTarget ? undefined : ''}
-        data-testid="custom-field-upgrade"
-        dir="rtl"
-        className="w-full max-w-sm rounded-xl border border-border-primary bg-bg-tertiary p-3 space-y-2"
-      >
-        <p className="text-[11px] text-text-muted leading-relaxed">למשל: סטאפ — Breakout / Pullback</p>
-        {onUpgrade ? (
-          <button
-            type="button"
-            onClick={onUpgrade}
-            className="flex items-center gap-1.5 text-[11px] text-accent-primary hover:underline cursor-pointer"
-          >
-            <Crown className="w-3.5 h-3.5" />
-            הגדרת שדות חדשים — שדרג ל-Premium
-          </button>
-        ) : (
-          <a href="/premium" className="inline-flex items-center gap-1.5 text-[11px] text-accent-primary hover:underline">
-            <Crown className="w-3.5 h-3.5" />
-            הגדרת שדות חדשים — שדרג ל-Premium
-          </a>
-        )}
-      </div>
-    );
-  } else if (mode) {
+  if (mode) {
     panel = (
       <div
         ref={panelRef}
@@ -287,9 +254,7 @@ export function useCustomTradeFieldEditor({
     );
   }
 
-  const fieldActions = (field) => {
-    if (!isPremium) return null;
-    return (
+  const fieldActions = (field) => (
       <span className="inline-flex items-center shrink-0">
         <button
           type="button"
@@ -310,8 +275,7 @@ export function useCustomTradeFieldEditor({
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       </span>
-    );
-  };
+  );
 
   const confirm = (
     <ConfirmDialog

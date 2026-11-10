@@ -253,7 +253,7 @@ function TradeForm({
   isOpen, onClose, trade, onSave, riskSettings, livePrices = {},
   journalAssetClass = 'crypto', prefill = null, accountBalance = 0, strictAccount = false,
   customFields = [], customFieldsReady = false,
-  customFieldsDoc = null, onSaveCustomFields, isPremium = false, onUpgradeCustomFields,
+  customFieldsDoc = null, onSaveCustomFields,
   breachWarning = null, onDismissBreach = null,
 }) {
   // Asset class is owned by the JOURNAL — every trade inherits it, no per-trade
@@ -303,13 +303,11 @@ function TradeForm({
   const [fieldErrors, setFieldErrors] = useState({});
   const [discardOpen, setDiscardOpen] = useState(false);
   const customFieldUi = useCustomTradeFieldEditor({
-    isPremium,
     doc: customFieldsDoc,
     fields: customFields,
     ready: customFieldsReady,
     active: isOpen,
     onSave: onSaveCustomFields,
-    onUpgrade: onUpgradeCustomFields,
     onRequestOpen: () => setJournalOpenState(true),
   });
   const submitRef = useRef(null);
