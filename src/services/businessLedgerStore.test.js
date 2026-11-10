@@ -54,30 +54,18 @@ describe('business ledger store', () => {
     expect(await store.list()).toEqual([]);
   });
 
-  it('keeps the real Firestore store off while the flag is false', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
-    expect(BUSINESS_LEDGER_FIRESTORE_ENABLED).toBe(false);
-    expect(BUSINESS_LEDGER_STORAGE_MODE).toBe('disabled');
+  it('uses the Firestore book now that the release flag is on', () => {
+    expect(BUSINESS_LEDGER_FIRESTORE_ENABLED).toBe(true);
+    expect(BUSINESS_LEDGER_STORAGE_MODE).toBe('firestore');
     expect(BUSINESS_LEDGER_COLLECTION).toBe('businessEntries');
-    expect(createBusinessLedgerStore().enabled).toBe(false);
-    expect(createBusinessLedgerStore().kind).not.toBe('firestore');
-
-    const firestore = createFirestoreBusinessLedgerStore();
-    expect(firestore.enabled).toBe(false);
-    expect(await firestore.list()).toEqual([]);
-    expect(await firestore.save(row())).toMatchObject({
-      ok: false,
-      code: 'firestore_disabled',
-      message: 'השמירה לחשבון עדיין לא מופעלת.',
-    });
-    expect(await firestore.remove('a')).toMatchObject({ ok: false, code: 'firestore_disabled' });
-    expect(await createBusinessLedgerStore('firestore').save(row())).toMatchObject({ code: 'firestore_disabled' });
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
+    const store = createBusinessLedgerStore();
+    expect(store.enabled).toBe(true);
+    expect(store.kind).toBe('firestore');
+    expect(createFirestoreBusinessLedgerStore().kind).toBe('firestore');
 
     const src = readFileSync(new URL('./businessLedgerStore.js', import.meta.url), 'utf8');
     const page = readFileSync(new URL('../components/business/BusinessLedgerPage.jsx', import.meta.url), 'utf8');
-    expect(src).toMatch(/BUSINESS_LEDGER_FIRESTORE_ENABLED = false/);
+    expect(src).toMatch(/BUSINESS_LEDGER_FIRESTORE_ENABLED = true/);
     expect(src).not.toMatch(/^import\s.+from\s+['"]firebase/m);
     expect(src).not.toMatch(/^import\s.+firestoreService/m);
     expect(page).not.toMatch(/from ['"]firebase|firestoreService/);

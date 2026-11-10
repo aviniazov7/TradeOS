@@ -13,10 +13,10 @@ export const NOTEBOOK_COLLECTION = 'notebookEntries';
 
 /**
  * Single switch for account persistence.
- * Publish the `users/{uid}/notebookEntries` rules to production first,
- * then set this to true. Default false: the page stays on the marked demo.
+ * The account notebook is on for v2.3.0. The `users/{uid}/notebookEntries`
+ * rules have to be published before this build reaches production.
  */
-export const NOTEBOOK_FIRESTORE_ENABLED = false;
+export const NOTEBOOK_FIRESTORE_ENABLED = true;
 
 const SAVING_OFF = 'השמירה לחשבון עדיין לא מופעלת.';
 const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;

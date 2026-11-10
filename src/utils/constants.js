@@ -1,6 +1,6 @@
 // App version — bumped on each release. Shown in the sidebar so it's
 // easy to confirm which version a device is actually running.
-export const APP_VERSION = '2.2.1';
+export const APP_VERSION = '2.3.0';
 
 export const COINS = [
   // Layer 1s

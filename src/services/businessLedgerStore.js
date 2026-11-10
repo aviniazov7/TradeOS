@@ -13,10 +13,10 @@ export const BUSINESS_LEDGER_COLLECTION = 'businessEntries';
 
 /**
  * Single switch for account persistence.
- * Publish the `users/{uid}/businessEntries` rules to production first,
- * then set this to true. Default false: the page stays on the marked demo.
+ * The account book is on for v2.3.0. The `users/{uid}/businessEntries`
+ * rules have to be published before this build reaches production.
  */
-export const BUSINESS_LEDGER_FIRESTORE_ENABLED = false;
+export const BUSINESS_LEDGER_FIRESTORE_ENABLED = true;
 
 const SAVING_OFF = 'השמירה לחשבון עדיין לא מופעלת.';
 

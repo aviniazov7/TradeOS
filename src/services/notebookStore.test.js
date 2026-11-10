@@ -62,30 +62,18 @@ describe('notebook store', () => {
     expect(await store.list()).toHaveLength(1);
   });
 
-  it('keeps the real Firestore store off while the flag is false', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
-    expect(NOTEBOOK_FIRESTORE_ENABLED).toBe(false);
-    expect(NOTEBOOK_STORAGE_MODE).toBe('disabled');
+  it('uses the Firestore book now that the release flag is on', () => {
+    expect(NOTEBOOK_FIRESTORE_ENABLED).toBe(true);
+    expect(NOTEBOOK_STORAGE_MODE).toBe('firestore');
     expect(NOTEBOOK_COLLECTION).toBe('notebookEntries');
-    expect(createNotebookStore().enabled).toBe(false);
-    expect(createNotebookStore().kind).not.toBe('firestore');
-
-    const firestore = createFirestoreNotebookStore();
-    expect(firestore.enabled).toBe(false);
-    expect(await firestore.list()).toEqual([]);
-    expect(await firestore.save(row())).toMatchObject({
-      ok: false,
-      code: 'firestore_disabled',
-      message: 'השמירה לחשבון עדיין לא מופעלת.',
-    });
-    expect(await firestore.remove('a')).toMatchObject({ ok: false, code: 'firestore_disabled' });
-    expect(await createNotebookStore('firestore').save(row())).toMatchObject({ code: 'firestore_disabled' });
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
+    const store = createNotebookStore();
+    expect(store.enabled).toBe(true);
+    expect(store.kind).toBe('firestore');
+    expect(createFirestoreNotebookStore().kind).toBe('firestore');
 
     const src = readFileSync(new URL('./notebookStore.js', import.meta.url), 'utf8');
     const page = readFileSync(new URL('../components/notebook/NotebookPage.jsx', import.meta.url), 'utf8');
-    expect(src).toMatch(/NOTEBOOK_FIRESTORE_ENABLED = false/);
+    expect(src).toMatch(/NOTEBOOK_FIRESTORE_ENABLED = true/);
     expect(src).not.toMatch(/^import\s.+from\s+['"]firebase/m);
     expect(src).not.toMatch(/^import\s.+firestoreService/m);
     expect(page).not.toMatch(/from ['"]firebase|firestoreService/);
