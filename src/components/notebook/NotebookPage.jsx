@@ -91,8 +91,10 @@ export default function NotebookPage({
   const liveDemo = useDemoMode();
   const journalCtx = useJournalContext();
   const premium = premiumProp == null ? !!auth.isPremium : premiumProp;
-  const demo = demoProp == null ? liveDemo.active : demoProp;
-  const enterDemo = onEnterDemo || liveDemo.enter;
+  // Page demo is local. The shell demo flag turns itself off as soon as the
+  // account has a real trade, which made the demo controls a no-op.
+  const [pageDemo, setPageDemo] = useState(false);
+  const demo = demoProp == null ? (pageDemo || liveDemo.active) : demoProp;
   const journals = journalsProp == null ? (journalCtx.journals || []) : journalsProp;
   const clock = now || new Date();
   const journalKey = journals.map((journal) => journal?.name || '').join('|');
@@ -139,6 +141,11 @@ export default function NotebookPage({
   const tags = notebookTagOptions(entries);
 
   const [formOpen, setFormOpen] = useState(false);
+  const enterDemo = () => {
+    setFormOpen(false);
+    if (onEnterDemo) onEnterDemo();
+    if (demoProp == null) setPageDemo(true);
+  };
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(() => blankDraft(clock));
   const [formError, setFormError] = useState('');
@@ -147,7 +154,7 @@ export default function NotebookPage({
   const setField = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
 
   const openNew = () => {
-    if (!store.enabled || !limit.canAdd) return;
+    if ((!store.enabled && !demo) || !limit.canAdd) return;
     setEditing(null);
     setDraft(blankDraft(clock));
     setFormError('');
@@ -238,7 +245,7 @@ export default function NotebookPage({
                 <Crown className="w-4 h-4" /> שדרג ל-Premium
               </Link>
             )}
-            <button type="button" onClick={openNew} disabled={!store.enabled || !limit.canAdd} data-testid="notebook-add" className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
+            <button type="button" onClick={openNew} disabled={(!store.enabled && !demo) || !limit.canAdd} data-testid="notebook-add" className={`${headerPrimaryBtn} flex-1 sm:flex-none`}>
               <Plus className="w-4 h-4" /> רשומה חדשה
             </button>
           </div>

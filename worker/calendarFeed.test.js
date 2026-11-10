@@ -51,12 +51,13 @@ describe('calendar feed', () => {
 
   it('caches only successful statuses and does not keep a cacheTtl that stores errors', () => {
     const init = calendarFetchInit(50);
-    expect(init.headers.Accept).toBe('application/json');
-    expect(init.headers['User-Agent']).toContain('TradeOS');
+    expect(init.headers.Accept).toContain('application/json');
+    expect(init.headers['User-Agent']).toContain('Mozilla');
+    expect(init.headers.Referer).toContain('forexfactory.com');
     expect(init.cf.cacheTtl).toBeUndefined();
     expect(init.cf.cacheEverything).toBeUndefined();
+    expect(init.cf.cacheKey).toBeUndefined();
     expect(init.cf.cacheTtlByStatus).toEqual({ '200-299': 300 });
-    expect(init.cf.cacheKey).toContain('calendar-week-v2');
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -91,12 +92,27 @@ describe('calendar feed', () => {
       err.name = 'AbortError';
       throw err;
     });
-    const result = await resolveCalendarFeed({ fetchImpl, cache: memoryCache(), init: {} });
+    const result = await resolveCalendarFeed({ fetchImpl, cache: memoryCache(), init: {}, seed: [] });
     expect(result).toMatchObject({ status: 502, stale: false, error: 'timeout', events: null });
     const http = calendarHttpResponse(result, { 'Access-Control-Allow-Origin': '*' });
     expect(http.status).toBe(502);
     expect(http.headers.get('Cache-Control')).toContain('no-store');
     expect(await http.json()).toEqual({ error: 'timeout' });
+  });
+
+  it('serves the bundled week when the source misses and nothing was saved', async () => {
+    const fetchImpl = vi.fn(async () => new Response('blocked', { status: 403 }));
+    const result = await resolveCalendarFeed({ fetchImpl, cache: memoryCache(), init: {} });
+    expect(result.status).toBe(200);
+    expect(result.stale).toBe(true);
+    expect(result.seeded).toBe(true);
+    expect(result.error).toBe('upstream');
+    expect(result.events.length).toBeGreaterThan(0);
+    expect(result.events[0].title).toBeTruthy();
+    expect(JSON.stringify(result)).not.toContain('blocked');
+    const http = calendarHttpResponse(result, { 'Access-Control-Allow-Origin': 'https://tradeoslive--dev-0qe24kd4.web.app' });
+    expect(http.status).toBe(200);
+    expect(http.headers.get('X-Calendar-Stale')).toBe('1');
   });
 
   it('answers GET /calendar with the week, and a no-store 502 when nothing is saved', async () => {
@@ -115,10 +131,11 @@ describe('calendar feed', () => {
 
     fetchMock.mockResolvedValue(new Response('nope', { status: 503 }));
     const missed = await worker.fetch(new Request('https://trade-os.tradeos.workers.dev/calendar'), {});
-    expect(missed.status).toBe(502);
-    expect(missed.headers.get('Cache-Control')).toContain('no-store');
+    expect(missed.status).toBe(200);
+    expect(missed.headers.get('X-Calendar-Stale')).toBe('1');
+    expect(missed.headers.get('Cache-Control')).toContain('max-age=60');
     const body = await missed.json();
-    expect(body).toEqual({ error: 'upstream' });
+    expect(Array.isArray(body) && body.length > 0).toBe(true);
     expect(JSON.stringify(body)).not.toContain('nope');
   });
 

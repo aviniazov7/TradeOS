@@ -100,8 +100,10 @@ export default function BusinessLedgerPage({
   const liveDemo = useDemoMode();
   const journalCtx = useJournalContext();
   const premium = premiumProp == null ? !!auth.isPremium : premiumProp;
-  const demo = demoProp == null ? liveDemo.active : demoProp;
-  const enterDemo = onEnterDemo || liveDemo.enter;
+  // Page demo is local. The shell demo flag turns itself off as soon as the
+  // account has a real trade, which made "צפה בדוגמה" a no-op for Premium.
+  const [pageDemo, setPageDemo] = useState(false);
+  const demo = demoProp == null ? (pageDemo || liveDemo.active) : demoProp;
   const journals = journalsProp == null ? (journalCtx.journals || []) : journalsProp;
   const clock = now || new Date();
   const journalKey = journals.map((journal) => journal?.id || '').join('|');
@@ -153,6 +155,11 @@ export default function BusinessLedgerPage({
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   const [formOpen, setFormOpen] = useState(false);
+  const enterDemo = () => {
+    setFormOpen(false);
+    if (onEnterDemo) onEnterDemo();
+    if (demoProp == null) setPageDemo(true);
+  };
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(() => blankDraft(clock));
   const [formError, setFormError] = useState('');
@@ -316,7 +323,7 @@ export default function BusinessLedgerPage({
             </MotionDiv>
           )}
 
-          {premium ? (
+          {(premium || demo) ? (
             <div className="space-y-3">
               {present.length > 1 && (
                 <div className="flex flex-wrap gap-2" role="group" aria-label="מטבע לגרף">
