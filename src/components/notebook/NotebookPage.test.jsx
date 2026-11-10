@@ -190,16 +190,65 @@ describe('מחברת', () => {
     await view.cleanup();
   });
 
-  it('lets a premium reader filter by tag', async () => {
+  it('lets a premium reader filter by tag and marks the active chip', async () => {
     const view = await mount(
       <NotebookPage demo isPremium journals={JOURNALS} now={NOW} />,
     );
     expect(document.querySelector('[data-testid="notebook-tag-lock"]')).toBeNull();
     const filter = document.querySelector('[data-testid="notebook-tag-filter"]');
-    await act(async () => { buttonNamed('שבוע', filter).click(); });
+    const all = buttonNamed('כל התגיות', filter);
+    const btc = buttonNamed('BTC', filter);
+    const week = buttonNamed('שבוע', filter);
+    expect(all.getAttribute('aria-pressed')).toBe('true');
+    expect(all.className).toContain('bg-accent-primary/15');
+    expect(all.className).toContain('border-accent-primary');
+    expect(all.className).toContain('text-accent-hover');
+    expect(btc.getAttribute('aria-pressed')).toBe('false');
+    expect(btc.className).not.toContain('bg-accent-primary/15');
+    expect(btc.className).toContain('border-border-primary');
+    expect(btc.className).toContain('text-text-secondary');
+    expect([...filter.querySelectorAll('button')].filter((btn) => btn.getAttribute('aria-pressed') === 'true')).toHaveLength(1);
+
+    await act(async () => { btc.click(); });
+    expect(btc.getAttribute('aria-pressed')).toBe('true');
+    expect(btc.className).toContain('bg-accent-primary/15');
+    expect(btc.className).toContain('text-accent-hover');
+    expect(all.getAttribute('aria-pressed')).toBe('false');
+    expect(all.className).not.toContain('bg-accent-primary/15');
+    expect(all.className).toContain('border-border-primary');
+    expect(document.querySelector('[data-testid="notebook-entry-demo-nb-lesson"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="notebook-entry-demo-nb-idea"]')).toBeNull();
+    expect(document.querySelector('[data-testid="notebook-entry-demo-nb-week"]')).toBeNull();
+
+    await act(async () => { week.click(); });
+    expect(week.getAttribute('aria-pressed')).toBe('true');
+    expect(week.className).toContain('bg-accent-primary/15');
+    expect(btc.getAttribute('aria-pressed')).toBe('false');
+    expect(btc.className).not.toContain('bg-accent-primary/15');
     expect(document.querySelector('[data-testid="notebook-entry-demo-nb-week"]')).toBeTruthy();
     expect(document.querySelector('[data-testid="notebook-entry-demo-nb-lesson"]')).toBeNull();
     expect(document.querySelector('[data-testid="notebook-month-2026-02"]')).toBeTruthy();
+
+    await act(async () => { all.click(); });
+    expect(all.getAttribute('aria-pressed')).toBe('true');
+    expect(all.className).toContain('bg-accent-primary/15');
+    expect(week.getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('[data-testid="notebook-entry-demo-nb-lesson"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="notebook-entry-demo-nb-idea"]')).toBeTruthy();
+    await view.cleanup();
+  });
+
+  it('does not render a demo entry dated after today', async () => {
+    const now = new Date('2026-11-10T12:06:00Z');
+    const view = await mount(
+      <NotebookPage demo isPremium journals={JOURNALS} now={now} />,
+    );
+    expect(text()).not.toContain('18/11/2026');
+    expect(text()).toContain('08/11/2026');
+    expect(text()).toContain('01/11/2026');
+    expect(text()).toContain('20/10/2026');
+    expect(text()).toContain('נובמבר 2026');
+    expect(text()).toContain('אוקטובר 2026');
     await view.cleanup();
   });
 
