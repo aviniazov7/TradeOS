@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { m, AnimatePresence } from 'framer-motion';
-import { LineChart, Eye, EyeOff, Plus, ChevronDown } from 'lucide-react';
+import { Eye, EyeOff, Plus, ChevronDown, ChevronLeft } from 'lucide-react';
+import './home.css';
 import { useTrades } from '../../hooks/useTrades';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -20,10 +21,7 @@ import HomeNextStep, { HomeConnectNudge } from './HomeNextStep';
 import PortfolioHero from './PortfolioHero';
 import { HomePanel, HomeKpis, RecentTradesCard, ScoreCard, QuickLinks, MarketCard } from './HomeSections';
 import { NewsList } from './NewsList';
-import PageHeader from '../shared/PageHeader';
 import ExchangeLogo from '../shared/ExchangeLogo';
-import Card from '../shared/Card';
-import FitText from '../shared/FitText';
 import Reveal from '../shared/Reveal';
 import { formatCurrency } from '../../utils/formatters';
 import { exchangeLabel, isUnsetExchange } from '../../utils/constants';
@@ -60,51 +58,47 @@ function JournalTile({ j, mask, onOpen }) {
   if (j.problem) missingWhy = `${KEY_PROBLEM_TEXT[j.problem]} — עדכן בטאב בורסה`;
   else if (venue && exchangeLabel(j.exchange)) missingWhy = `אין כרגע שווי חי מ-${exchangeLabel(j.exchange)}`;
   else if (venue) missingWhy = 'אין כרגע שווי חי מהבורסה';
+  const venueName = exchangeLabel(j.exchange);
   return (
-    <Card as="button" type="button" hover spotlight onClick={onOpen} className="w-full text-right p-4 flex flex-col gap-3">
-      <div className="relative flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          {exchangeLabel(j.exchange) && <ExchangeLogo exchange={j.exchange} size="w-5 h-5" />}
-          <span className="text-sm font-semibold text-text-primary truncate">{j.name}</span>
-          {j.demo && (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-breakeven/15 text-breakeven border border-breakeven/30 shrink-0">דמו</span>
+    <button type="button" onClick={onOpen} className="journal-card">
+      <span className="journal-card__head">
+        <span className="journal-card__id">
+          {venueName
+            ? <ExchangeLogo exchange={j.exchange} size="w-5 h-5" />
+            : <span className="journal-card__mark" aria-hidden>{String(j.name || 'י').trim().slice(0, 1)}</span>}
+          <span style={{ minWidth: 0 }}>
+            <span className="journal-card__name">{j.name}</span>
+            <span className="journal-card__meta">{venueName || 'ללא חיבור'} · {j.tradesCount} עסקאות</span>
+          </span>
+        </span>
+        <span className="journal-card__badges">
+          {j.demo && <span className="chip chip--warning">דמו</span>}
+          {j.balance !== null && (
+            j.live ? (
+              <span className="chip chip--profit" title="שווי חי מהבורסה"><span className="dot" />LIVE</span>
+            ) : (
+              <span className="chip chip--neutral" title="יתרה התחלתית + רווח/הפסד מהיומן"><span className="dot" />מחושב</span>
+            )
           )}
-        </div>
-        {j.balance !== null && (
-          j.live ? (
-            <span dir="ltr" className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wide px-2 py-0.5 rounded-full bg-profit/10 text-profit border border-profit/25 shrink-0"
-              title="שווי חי מהבורסה">
-              <span className="w-1.5 h-1.5 rounded-full bg-profit animate-pulse" />LIVE
-            </span>
-          ) : (
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-bg-tertiary text-text-muted border border-border-primary shrink-0"
-              title="יתרה התחלתית + רווח/הפסד מהיומן">
-              מחושב
-            </span>
-          )
-        )}
-      </div>
-
-      <div className="relative">
-        <div className="text-[11px] text-text-muted mb-0.5">שווי התיק</div>
+        </span>
+      </span>
+      <span className="journal-card__value">
+        <span>שווי התיק</span>
         {j.balance !== null ? (
-          <FitText as="div" className="num-mono text-xl font-bold text-text-primary" dir="ltr" style={{ textAlign: 'right' }}>
-            {mask(formatCurrency(j.balance).replace('+', ''))}
-          </FitText>
+          <strong className="journal-card__balance" dir="ltr">{mask(formatCurrency(j.balance).replace('+', ''))}</strong>
         ) : (
           <>
-            <div className="text-xl font-bold text-text-muted">—</div>
-            <div className={`text-[11px] mt-0.5 ${j.problem ? 'text-loss' : 'text-text-muted'}`}>{missingWhy}</div>
+            <strong className="journal-card__balance">—</strong>
+            <span className={j.problem ? 'loss' : ''}>{missingWhy}</span>
           </>
         )}
-      </div>
-
-      <div className="relative flex items-center gap-3 text-xs pt-3 border-t border-border-primary">
-        <span className={`num-mono font-semibold ${pnlCls}`} dir="ltr">{mask(formatCurrency(j.pnl))}</span>
-        <span className="text-text-muted">{j.tradesCount} עסקאות</span>
-        <span className="text-text-muted">{j.winRate.toFixed(0)}% הצלחה</span>
-      </div>
-    </Card>
+      </span>
+      <span className="journal-card__foot">
+        <span className={`num ${j.pnl > 0 ? 'profit' : j.pnl < 0 ? 'loss' : ''} ${pnlCls}`} dir="ltr">{mask(formatCurrency(j.pnl))}</span>
+        <span>{j.winRate.toFixed(0)}% הצלחה</span>
+        <ChevronLeft className="journal-chevron w-4 h-4" aria-hidden />
+      </span>
+    </button>
   );
 }
 
@@ -192,11 +186,20 @@ export default function Dashboard() {
 
   // Global market data + latest news
   const [globalMarket, setGlobalMarket] = useState(() => readSessionCache('globalMarket', 5 * 60 * 1000));
+  const [marketAt, setMarketAt] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem('tradeos_cache:globalMarket');
+      const parsed = raw ? JSON.parse(raw) : null;
+      return typeof parsed?.at === 'number' ? parsed.at : null;
+    } catch { return null; }
+  });
+  const [marketRefreshing, setMarketRefreshing] = useState(false);
   const [marketFailed, setMarketFailed] = useState(false);
   // Bumped by the card's "נסה שוב" to run the load again from scratch.
   const [marketAttempt, setMarketAttempt] = useState(0);
   const retryMarket = useCallback(() => {
     setMarketFailed(false);
+    setMarketRefreshing(true);
     setMarketAttempt((n) => n + 1);
   }, []);
   const [latestNews, setLatestNews] = useState(() => readSessionCache('latestNews', 15 * 60 * 1000) || []);
@@ -212,13 +215,18 @@ export default function Dashboard() {
         const data = await fetchGlobalMarket({ signal: controller.signal });
         if (!controller.signal.aborted) {
           setGlobalMarket(data);
+          setMarketAt(Date.now());
           setMarketFailed(false);
+          setMarketRefreshing(false);
           writeSessionCache('globalMarket', data);
         }
       } catch (e) {
         if (e.name === 'AbortError') return;
         if (attempt < 2) retryTimer = setTimeout(() => fetchMarket(attempt + 1), 3000 * (attempt + 1));
-        else if (!controller.signal.aborted) setMarketFailed(true);
+        else if (!controller.signal.aborted) {
+          setMarketFailed(true);
+          setMarketRefreshing(false);
+        }
       }
     };
     fetchMarket();
@@ -453,6 +461,8 @@ export default function Dashboard() {
 
   const openJournal = (j) => { setActiveJournalId(j.id); navigate('/journal'); };
   const synced = Object.keys(linkedBalances || {}).length > 0;
+  const liveVenues = [...new Set(journalStats.filter((j) => j.live).map((j) => exchangeLabel(j.exchange)).filter(Boolean))];
+  const syncText = synced ? `מסונכרן מהבורסה${liveVenues.length ? ` · ${liveVenues.join(' · ')}` : ''}` : '';
   // Unknown is not "disconnected": an empty book waits instead of flashing
   // the connect hero at someone whose exchange is already linked.
   const exchangePending = exchangeConnected === null && kpi.tradeCount === 0;
@@ -460,38 +470,36 @@ export default function Dashboard() {
   const showBook = !exchangePending && (stage === 'active' || stage === 'manual');
 
   return (
-    <m.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
-      <PageHeader
-        icon={LineChart}
-        title={greetingFor(profile?.displayName || user?.displayName)}
-        subtitle={(
-          <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            {todayLabel()}
-            {synced && (
-              <span className="inline-flex items-center gap-1.5 text-profit font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-profit" style={{ boxShadow: '0 0 8px var(--color-profit)' }} />
-                מסונכרן מהבורסה
-              </span>
+    <m.div className="home-dash" variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={pageTransition}>
+      <header className="masthead">
+        <div>
+          <div className="eyebrow">
+            {syncText && (
+              <span className="eyebrow__sync"><span className="dot" aria-hidden />{syncText}</span>
             )}
-          </span>
-        )}
-        actions={(
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button type="button" onClick={toggleHide} aria-label={hideBalances ? 'הצגת סכומים' : 'הסתרת סכומים'} title={hideBalances ? 'הצגת סכומים' : 'הסתרת סכומים'}
-              className="w-11 h-11 shrink-0 rounded-xl border border-border-primary bg-bg-tertiary text-text-secondary hover:text-text-primary grid place-items-center cursor-pointer">
-              {hideBalances ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
-            </button>
-            <button type="button" onClick={() => navigate('/journal?new=1')}
-              className="h-11 px-4 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl bg-accent-muted hover:bg-accent-primary text-white text-sm font-bold transition-colors cursor-pointer">
-              <Plus className="w-4 h-4" /> עסקה חדשה
-            </button>
+            <span>{todayLabel()}</span>
           </div>
-        )}
-      />
+          <h1>{greetingFor(profile?.displayName || user?.displayName)}</h1>
+          <p className="masthead__sub">התיק שלך במבט אחד — ומה שווה לבדוק עכשיו.</p>
+        </div>
+        <div className="masthead__actions">
+          <button
+            type="button"
+            onClick={toggleHide}
+            aria-pressed={hideBalances}
+            aria-label={hideBalances ? 'הצגת סכומים' : 'הסתרת סכומים'}
+            className="btn btn--secondary"
+          >
+            {hideBalances ? <Eye className="w-4 h-4" aria-hidden /> : <EyeOff className="w-4 h-4" aria-hidden />}
+            {hideBalances ? 'הצג סכומים' : 'הסתר סכומים'}
+          </button>
+          <button type="button" onClick={() => navigate('/journal?new=1')} className="btn btn--primary">
+            <Plus className="w-4 h-4" aria-hidden /> עסקה חדשה
+          </button>
+        </div>
+      </header>
 
-      {exchangePending && (
-        <div className="h-64 md:h-72 rounded-2xl bg-bg-secondary border border-border-primary animate-pulse mb-4" />
-      )}
+      {exchangePending && <div className="home-pending" />}
 
       {stage === 'awaiting' && <OpenPositionsSummary hidden={hideBalances} />}
 
@@ -509,34 +517,42 @@ export default function Dashboard() {
 
       {showBook && <OpenPositionsSummary hidden={hideBalances} />}
 
-      <div className="space-y-4 mb-6">
-        {showBook && (
-          <>
-            <HomeKpis kpi={kpi} hidden={hideBalances} />
+      {showBook && (
+        <>
+          <div className="split">
+            <PortfolioHero
+              balance={globalStats.totalBalance}
+              declaredStart={declaredStartCapital(statJournals)}
+              series={equitySeries}
+              trades={heroTrades}
+              hidden={hideBalances}
+              journalCount={statJournals.length}
+              onSetBalance={() => navigate('/journal?settings=1')}
+            />
+            <RecentTradesCard trades={recentClosed} hidden={hideBalances} />
+          </div>
 
-            {/* Portfolio beside the latest trades. On a phone the trades
-                come first so the book is on screen before the chart. */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-              <div className="lg:col-span-2 min-w-0 order-2 lg:order-1">
-                <PortfolioHero balance={globalStats.totalBalance} declaredStart={declaredStartCapital(statJournals)} series={equitySeries} trades={heroTrades} hidden={hideBalances} onSetBalance={() => navigate('/journal?settings=1')} />
-              </div>
-              <RecentTradesCard trades={recentClosed} hidden={hideBalances} className="order-1 lg:order-2" />
-              <div className="lg:col-span-2 min-w-0 order-3">
-                <TradeAgentCard trades={allTrades} />
-              </div>
-              <div className="order-4">
-                <ScoreCard metrics={perf.metrics} score={perf.score} sampleSize={kpi.tradeCount} />
-              </div>
-            </div>
-          </>
-        )}
+          <HomeKpis kpi={kpi} hidden={hideBalances} />
 
-        {showBook && (
+          <div className="split">
+            <TradeAgentCard trades={allTrades} />
+            <ScoreCard metrics={perf.metrics} score={perf.score} sampleSize={kpi.tradeCount} />
+          </div>
+        </>
+      )}
+
+      {showBook && (
         <Reveal>
-          <HomePanel title={`היומנים שלך (${statJournals.length})`} link="לכל היומנים" onLink={() => navigate('/journal')}>
+          <HomePanel
+            title={<>היומנים שלך <span className="panel__count">({statJournals.length})</span></>}
+            link="לכל היומנים"
+            onLink={() => navigate('/journal')}
+            className="journals"
+            titleId="journalsTitle"
+          >
             {journalStats.length > 0 ? (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="journal-grid">
                   {journalStats.slice(0, 3).map((j) => (
                     <JournalTile key={j.id} j={j} mask={maskAmount} onOpen={() => openJournal(j)} />
                   ))}
@@ -550,7 +566,7 @@ export default function Dashboard() {
                       transition={{ duration: 0.3, ease: 'easeInOut' }}
                       className="overflow-hidden"
                     >
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
+                      <div className="journal-grid journal-more">
                         {journalStats.slice(3).map((j) => (
                           <JournalTile key={j.id} j={j} mask={maskAmount} onOpen={() => openJournal(j)} />
                         ))}
@@ -560,31 +576,31 @@ export default function Dashboard() {
                 </AnimatePresence>
                 {journalStats.length > 3 && (
                   <button
+                    type="button"
                     onClick={() => setShowAllJournals((v) => !v)}
-                    className="flex items-center justify-center gap-1 w-full mt-3 py-2 text-xs text-text-secondary hover:text-accent-primary transition-colors cursor-pointer"
+                    className={`journal-toggle${showAllJournals ? ' is-open' : ''}`}
+                    aria-expanded={showAllJournals}
                   >
                     <span>{showAllJournals ? 'הצג פחות' : `הצג עוד ${journalStats.length - 3} יומנים`}</span>
-                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${showAllJournals ? 'rotate-180' : ''}`} />
+                    <ChevronDown className="w-3.5 h-3.5" aria-hidden />
                   </button>
                 )}
               </>
             ) : journalsLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {[0, 1].map((i) => <div key={i} className="h-24 rounded-xl bg-bg-tertiary animate-pulse" />)}
+              <div className="journal-grid">
+                {[0, 1].map((i) => <div key={i} className="home-pending" style={{ height: 120 }} />)}
               </div>
             ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <p className="text-sm text-text-secondary">אין יומנים עדיין. יומן אחד מספיק כדי להתחיל לתעד.</p>
-                <button type="button" onClick={() => navigate('/journal')} className="h-9 px-3 rounded-lg text-sm font-bold text-accent-hover hover:bg-accent-primary/10 cursor-pointer self-start">
-                  פתח יומן
-                </button>
+              <div className="journal-empty">
+                <p>אין יומנים עדיין. יומן אחד מספיק כדי להתחיל לתעד.</p>
+                <button type="button" onClick={() => navigate('/journal')} className="btn btn--outline">פתח יומן</button>
               </div>
             )}
           </HomePanel>
         </Reveal>
-        )}
+      )}
 
-        {showBook && (
+      {showBook && (
         <Reveal>
           <QuickLinks
             backtests={backtests} backtestStats={backtestStats} plans={plans} activePlans={activePlans}
@@ -592,21 +608,18 @@ export default function Dashboard() {
             loading={linksLoading}
           />
         </Reveal>
-        )}
+      )}
 
-        {/* First-steps checklist stays for accounts that already have a book
-            and have not finished the smaller setup items. */}
-        {showBook && <GettingStartedCard trades={realTrades} journals={journals} morningCount={morningEntries.length} />}
+      {showBook && <GettingStartedCard trades={realTrades} journals={journals} morningCount={morningEntries.length} />}
 
-        <Reveal>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-            <MarketCard market={globalMarket} fng={fng} failed={marketFailed} onRetry={retryMarket} className={!showBook ? 'lg:col-span-1' : ''} />
-            <HomePanel title="חדשות" link="לכל החדשות" onLink={() => navigate('/news')} className="lg:col-span-2">
-              <NewsList items={latestNews} max={3} />
-            </HomePanel>
-          </div>
-        </Reveal>
-      </div>
+      <Reveal>
+        <div className="split split--market">
+          <MarketCard market={globalMarket} fng={fng} failed={marketFailed} onRetry={retryMarket} updatedAt={marketAt} refreshing={marketRefreshing} />
+          <HomePanel title="חדשות" link="לכל החדשות" onLink={() => navigate('/news')} className="news" titleId="newsTitle">
+            <NewsList items={latestNews} max={3} />
+          </HomePanel>
+        </div>
+      </Reveal>
     </m.div>
   );
 }
