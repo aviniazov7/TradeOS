@@ -142,8 +142,11 @@ describe('login document', () => {
 
   it('self-hosts Heebo with font-display: swap', () => {
     const css = readFileSync(fileURLToPath(new URL('../../node_modules/@fontsource/heebo/hebrew-400.css', import.meta.url)), 'utf8');
+    const heavy = readFileSync(fileURLToPath(new URL('../../node_modules/@fontsource/heebo/hebrew-800.css', import.meta.url)), 'utf8');
     expect(css).toMatch(/font-display:\s*swap/);
     expect(css).toMatch(/\.woff2/);
+    expect(heavy).toMatch(/font-display:\s*swap/);
+    expect(heavy).toMatch(/\.woff2/);
   });
 });
 

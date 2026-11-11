@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./styles/tokens.css";
 
 /* Block pinch-zoom and overscroll bounce on mobile.
    `touch-action: manipulation` only removes the double-tap zoom - it does NOT
@@ -55,11 +56,12 @@ input[type="month"] {
 
 body {
   overscroll-behavior: none;
-  /* True black (iOS-style) — a single whisper-faint neutral glow for depth,
-     no blue tint. */
-  background:
-    radial-gradient(ellipse 1100px 700px at 50% -8%, rgba(255, 255, 255, 0.022) 0%, transparent 60%),
-    #000000;
+  /* Canvas colour and glow come from the design tokens, so light theme
+     follows .light without a second hardcoded wash. */
+  background-color: var(--bg-canvas);
+  background-image: var(--canvas-glow);
+  background-repeat: no-repeat;
+  color: var(--text-primary);
   /* dvh = the screen height you actually see. 100vh on phones includes the
      area behind the browser bar, which made the whole app scroll up and down a
      little even when there was nothing to scroll. */
@@ -67,67 +69,39 @@ body {
   min-height: 100dvh;
 }
 
-.light body {
-  background:
-    radial-gradient(ellipse 900px 900px at 5% 15%, rgba(139, 92, 246, 0.16) 0%, transparent 55%),
-    radial-gradient(ellipse 700px 700px at 95% 5%, rgba(99, 102, 241, 0.12) 0%, transparent 55%),
-    radial-gradient(ellipse 800px 800px at 40% 95%, rgba(139, 92, 246, 0.10) 0%, transparent 55%),
-    radial-gradient(ellipse 600px 600px at 80% 55%, rgba(168, 85, 247, 0.08) 0%, transparent 55%),
-    #e8ecf4;
+@theme {
+  --font-sans: "Heebo", "Inter", "Assistant", "Rubik", -apple-system, "Segoe UI", "Arial Hebrew", Arial, sans-serif;
 }
 
-@theme {
-  --font-sans: 'Heebo', 'Inter', sans-serif;
-
-  /* Background — pure-black base with translucent "glass" surfaces on top
-     (Apple-style frost). Over true black a blur has nothing to show, so the
-     glass has to read from a slightly-lighter NEUTRAL-GREY fill + a bright
-     hairline edge — that's what makes the frost visible. Grey (not blue): the
-     blue was saturate() amplifying the cyan accent, which is now gone. */
-  --color-bg-primary: #000000;
-  --color-bg-secondary: rgba(255, 255, 255, 0.05);
-  --color-bg-tertiary: rgba(255, 255, 255, 0.03);
-  --color-bg-overlay: rgba(12, 12, 14, 0.8);
-  --color-bg-solid: rgba(14, 14, 16, 0.82);
-
-  /* Borders */
-  --color-border-primary: rgba(255, 255, 255, 0.08);
-  --color-border-hover: rgba(255, 255, 255, 0.18);
-
-  /* Text */
-  --color-text-primary: #f0f0f0;
-  --color-text-secondary: #a0a0b0;
-  /* #80808f: ≥4.5:1 on the black page and the card surfaces (#606070 was
-     ~3.4:1 and failed WCAG AA for the small labels that use it). */
-  --color-text-muted: #80808f;
-  /* Chart axis labels. #c8c8d4 is about 10:1 on black — the old 8–10px
-     #606070 ticks failed both size and contrast. */
-  --color-chart-tick: #c8c8d4;
-
-  /* Accent (Cyan/turquoise) — base accent for TEXT, icons, borders and tints.
-     Buttons/fills keep the violet→cyan --accent-gradient overlay on top, so the
-     "Analyze" gradient look stays while plain accent text reads cyan, not violet. */
-  --color-accent-primary: #3b82f6;
-  --color-accent-hover: #60a5fa;
-  --color-accent-muted: #2563eb;
-
-  /* Status */
-  --color-profit: #22c55e;
-  --color-loss: #ef4444;
-  --color-breakeven: #f59e0b;
-  --color-long: #22c55e;
-  --color-short: #ef4444;
-
-  /* Chart palette — one canonical accent blue (= accent), one profit green,
-     one categorical purple. Charts must consume these, not ad-hoc hexes. */
-  --color-chart-purple: #8b5cf6;
+/* Colour utilities point at the semantic tokens. @theme inline keeps
+   bg-bg-primary / text-profit resolving at runtime, including under .light.
+   The --color-* names themselves are the compatibility aliases in tokens.css. */
+@theme inline {
+  --color-bg-primary: var(--bg-canvas);
+  --color-bg-secondary: var(--bg-surface-1);
+  --color-bg-tertiary: var(--bg-surface-2);
+  --color-bg-overlay: var(--bg-overlay);
+  --color-bg-solid: var(--bg-elevated);
+  --color-border-primary: var(--border-hairline);
+  --color-border-hover: var(--border-strong);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-tertiary);
+  --color-chart-tick: var(--chart-tick);
+  --color-accent-primary: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-muted: var(--accent-strong);
+  --color-profit: var(--status-profit);
+  --color-loss: var(--status-loss);
+  --color-breakeven: var(--status-warning);
+  --color-long: var(--status-long);
+  --color-short: var(--status-short);
+  --color-chart-purple: var(--chart-3);
 }
 
 /* iOS-style glass surface tokens (modals / command palette). Theme-aware so
    day mode renders a bright frosted glass instead of the dark one. */
 :root {
-  /* Signature accent gradient (the "Analyze" button look) — electric blue. */
-  --accent-gradient: linear-gradient(135deg, #2563eb 0%, #38bdf8 100%);
   /* Black glass (21st.dev vibe): the SURFACE stays dark/near-black — the
      "glass" reads from the bright hairline edge + top specular highlight +
      the backdrop frost, NOT from a lighter grey fill. */
@@ -163,37 +137,6 @@ body {
   --pm-hero-line: rgba(15, 23, 42, 0.10);
   --glass-shadow: 0 32px 80px rgba(31, 41, 79, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   --glass-shadow-sm: 0 28px 70px rgba(31, 41, 79, 0.16);
-  --color-bg-primary: #e8ecf4;
-  --color-bg-secondary: rgba(255, 255, 255, 0.35);
-  --color-bg-tertiary: rgba(255, 255, 255, 0.2);
-  /* Slate-tinted borders so card edges, table separators, dropdown outlines and
-     chart gridlines are actually visible on the light background (white-on-light
-     was near-invisible). */
-  --color-border-primary: rgba(15, 23, 42, 0.10);
-  --color-border-hover: rgba(15, 23, 42, 0.22);
-  --color-text-primary: #0f0f0f;
-  --color-text-secondary: #333340;
-  --color-text-muted: #5c5c66;
-  --color-chart-tick: #3a3a46;
-  --color-accent-primary: #1d4ed8;
-  --color-accent-hover: #1e40af;
-  --color-accent-muted: #1e3a8a;
-  --color-bg-overlay: rgba(248, 250, 253, 0.98);
-  --color-bg-solid: rgba(245, 247, 251, 0.98);
-  /* Darker profit/loss/breakeven for foreground TEXT so the headline P/L
-     numbers pass WCAG AA on the light glass cards. Still vivid enough for
-     fills/badges. Same rule for all three: keep the dark hue family, drop the
-     weight (green-500→700, red-500→600, amber-500→700).
-     Breakeven was the one token missing an override — amber-500 scored
-     1.4–1.9:1 on every light surface (unreadable). amber-700 lands at exactly
-     the same contrast as --color-profit everywhere: 4.24 on the page bg,
-     4.50 on a bg-secondary card, 3.43 inside a scrimmed modal. */
-  --color-profit: #15803d;
-  --color-loss: #dc2626;
-  --color-breakeven: #b45309;
-  --color-long: #15803d;
-  --color-short: #dc2626;
-  --color-chart-purple: #7c3aed;
 }
 
 /* Cards (always-present, sit over the pure-black body): NO backdrop-filter.

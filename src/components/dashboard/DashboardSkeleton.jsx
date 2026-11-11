@@ -1,23 +1,22 @@
-import Skeleton from '../shared/Skeleton';
+import './home.css';
 
-// Matches the signed-in home: greeting, the glance row, then the chart
-// beside the agent card. Shown only while trades are still loading.
+// Matches the signed-in home: masthead, hero beside recent trades, then the
+// KPI strip. Shown only while trades are still loading.
 export default function DashboardSkeleton() {
   return (
-    <div>
-      <Skeleton variant="title" className="mb-2 w-40 h-8" />
-      <Skeleton variant="text" className="mb-6 w-28 h-3" />
-
-      <div className="h-28 rounded-2xl bg-bg-secondary border border-border-primary mb-4" />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        <div className="lg:col-span-2 h-52 rounded-2xl bg-bg-secondary border border-border-primary animate-pulse" />
-        <div className="h-52 rounded-2xl bg-bg-secondary border border-border-primary animate-pulse" />
+    <div className="home-dash" aria-hidden>
+      <div>
+        <div className="home-pending" style={{ height: 14, width: 180, marginBottom: 10 }} />
+        <div className="home-pending" style={{ height: 32, width: 220 }} />
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 h-40 rounded-2xl bg-bg-secondary border border-border-primary animate-pulse" />
-        <div className="h-40 rounded-2xl bg-bg-secondary border border-border-primary animate-pulse" />
+      <div className="split">
+        <div className="home-pending" style={{ height: 320 }} />
+        <div className="home-pending" style={{ height: 320 }} />
+      </div>
+      <div className="home-pending" style={{ height: 140 }} />
+      <div className="split">
+        <div className="home-pending" style={{ height: 220 }} />
+        <div className="home-pending" style={{ height: 220 }} />
       </div>
     </div>
   );

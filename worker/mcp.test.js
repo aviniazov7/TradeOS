@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { handlePublicApi } from './publicApi.js';
 import { handleMcp } from './mcp.js';
-import { encodeFields } from './firestoreValues.js';
+import { decodeFields, encodeFields } from './firestoreValues.js';
 import { memoryFirestore } from './memoryFirestore.js';
 
 const PROJECT = 'p';
@@ -84,6 +84,7 @@ describe('MCP streamable HTTP', () => {
     const tools = await rpc(listed);
     expect(tools.result.tools.map((tool) => tool.name)).toEqual([
       'list_journals', 'add_trade', 'update_trade', 'list_trades', 'delete_trade', 'get_stats',
+      'list_daily_journals', 'get_risk_rules', 'list_plans', 'get_plan',
     ]);
     for (const tool of tools.result.tools) {
       expect(tool.description.length).toBeGreaterThan(40);
@@ -91,6 +92,9 @@ describe('MCP streamable HTTP', () => {
     }
     expect(tools.result.tools.find((tool) => tool.name === 'add_trade').inputSchema.properties.custom.type).toBe('object');
     expect(tools.result.tools.find((tool) => tool.name === 'update_trade').inputSchema.properties.custom.type).toBe('object');
+    expect(tools.result.tools.find((tool) => tool.name === 'list_journals').inputSchema.properties.type.enum).toEqual(['live', 'backtest']);
+    expect(tools.result.tools.find((tool) => tool.name === 'list_trades').inputSchema.properties.type.enum).toEqual(['live', 'backtest']);
+    expect(opened.result.instructions).toContain('backtest');
   });
 
   it('echoes an older protocol version and rejects an unknown one', async () => {
@@ -315,6 +319,139 @@ describe('MCP streamable HTTP', () => {
     const traversal = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'delete_trade', arguments: { id: '../journals/mexc' } } }));
     expect(traversal.result.isError).toBe(true);
     expect(db.docs.has('users/user1/journals/mexc')).toBe(true);
+  });
+
+  it('lists, reads, and scores backtest journals without writing them', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/mexc', encodeFields({
+      name: 'MEXC', exchange: 'MEXC', initialBalance: 1000,
+    }));
+    db.put('users/user1/backtestJournals/bj1', encodeFields({
+      name: 'BTC backtest', description: 'trendline', isDefault: false,
+    }));
+    db.put('users/user2/backtestJournals/hidden', encodeFields({ name: 'Hidden' }));
+    db.put('users/user1/backtests/bt1', encodeFields({
+      backtestJournalId: 'bj1', pair: 'BTCUSDT', direction: 'long', strategy: 'Trendline Break',
+      trigger: 'CHoCH', session: 'London', timeframe: '4H', date: '2026-06-02T13:00:00.000Z',
+      stopDistancePct: 0.9, rResult: 2, maxR: 5.7, result: 'win', notes: 'retest',
+    }));
+    db.put('users/user2/backtests/secret', encodeFields({
+      backtestJournalId: 'hidden', pair: 'BTCUSDT', rResult: 9, result: 'win', strategy: 'Secret',
+    }));
+
+    const all = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'list_journals', arguments: {} } }));
+    expect(all.result.isError).toBe(false);
+    expect(all.result.structuredContent.journals.map((j) => [j.id, j.type, j.isBacktest])).toEqual([
+      ['bj1', 'backtest', true],
+      ['mexc', 'live', false],
+    ]);
+    const only = await rpc(await mcp(db, {
+      method: 'tools/call', params: { name: 'list_journals', arguments: { type: 'backtest' } },
+    }));
+    expect(only.result.structuredContent.journals.map((j) => j.id)).toEqual(['bj1']);
+
+    const trades = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'list_trades', arguments: { journalId: 'bj1', type: 'backtest' } },
+    }));
+    expect(trades.result.isError).toBe(false);
+    expect(trades.result.structuredContent.trades).toHaveLength(1);
+    expect(trades.result.structuredContent.trades[0]).toMatchObject({
+      id: 'bt1',
+      type: 'backtest',
+      isBacktest: true,
+      journalId: 'bj1',
+      strategy: 'Trendline Break',
+      session: 'London',
+      stopDistancePct: 0.9,
+      rResult: 2,
+      maxR: 5.7,
+    });
+    expect(JSON.stringify(trades.result.structuredContent)).not.toContain('Secret');
+
+    const stats = await rpc(await mcp(db, {
+      method: 'tools/call', params: { name: 'get_stats', arguments: { journal: 'BTC backtest' } },
+    }));
+    expect(stats.result.isError).toBe(false);
+    expect(stats.result.structuredContent).toMatchObject({
+      journalId: 'bj1', type: 'backtest', isBacktest: true, totalR: 2, avgR: 2, totalPnl: null,
+    });
+    expect(stats.result.structuredContent.winRate).toBe(100);
+
+    const written = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'add_trade', arguments: { ...tradeArgs, journalId: 'bj1', journal: 'BTC backtest' } },
+    }));
+    expect(written.result.isError).toBe(true);
+    expect(written.result.content[0].text).toMatch(/not found|does not match/);
+    const removed = await rpc(await mcp(db, {
+      method: 'tools/call', params: { name: 'delete_trade', arguments: { id: 'bt1' } },
+    }));
+    expect(removed.result.isError).toBe(true);
+    expect(db.docs.has('users/user1/backtests/bt1')).toBe(true);
+    expect(db.docs.has('users/user2/backtests/secret')).toBe(true);
+    expect([...db.docs.keys()].some((key) => key.startsWith('users/user1/trades/'))).toBe(false);
+  });
+
+  it('lists and reads trading plans without writing them', async () => {
+    const db = memoryDb();
+    db.put('users/user1/tradingPlans/p1', encodeFields({
+      name: 'ORB', isActive: true, sessions: ['London'], entryRules: 'wait', riskManagement: '1%',
+    }));
+    db.put('users/user2/tradingPlans/secret', encodeFields({ name: 'Secret', entryRules: 'hidden' }));
+
+    const listed = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'list_plans', arguments: {} } }));
+    expect(listed.result.isError).toBe(false);
+    expect(listed.result.structuredContent.plans.map((plan) => plan.id)).toEqual(['p1']);
+    expect(listed.result.structuredContent.plans[0].entryRules).toBeUndefined();
+
+    const one = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'get_plan', arguments: { id: 'p1' } } }));
+    expect(one.result.structuredContent.plan).toMatchObject({
+      id: 'p1', entryRules: 'wait', riskManagement: '1%', sessions: ['London'],
+    });
+    const missing = await rpc(await mcp(db, { method: 'tools/call', params: { name: 'get_plan', arguments: { id: 'secret' } } }));
+    expect(missing.result.isError).toBe(true);
+    expect(db.docs.has('users/user2/tradingPlans/secret')).toBe(true);
+    expect(decodeFields(db.docs.get('users/user1/tradingPlans/p1')).entryRules).toBe('wait');
+  });
+
+  it('reads daily journals, risk rules, and grouped stats', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', encodeFields({
+      name: 'MEXC', initialBalance: 1000,
+      dailyLossAlert: { enabled: true, amount: 10 },
+    }));
+    db.put('users/user1/trades/t1', encodeFields({
+      journalId: 'j1', status: 'closed', result: 'loss', session: 'London',
+      netPnl: -25, pnl: -25, entryDate: new Date('2026-06-15T12:00:00.000Z'),
+      exitDate: new Date('2026-06-15T12:00:00.000Z'),
+    }));
+    db.put('users/user1/morningJournals/m1', encodeFields({
+      date: '2026-06-02', emotion: 'calm', mainGoal: 'wait',
+    }));
+    db.put('users/user2/morningJournals/secret', encodeFields({ date: '2026-06-02', mainGoal: 'hidden' }));
+
+    const daily = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'list_daily_journals', arguments: { from: '2026-06-01', to: '2026-06-30', kind: 'morning' } },
+    }));
+    expect(daily.result.isError).toBe(false);
+    expect(daily.result.structuredContent.entries.map((entry) => entry.id)).toEqual(['m1']);
+    expect(JSON.stringify(daily.result.structuredContent)).not.toContain('hidden');
+
+    const rules = await rpc(await mcp(db, {
+      method: 'tools/call', params: { name: 'get_risk_rules', arguments: { journalId: 'j1' } },
+    }));
+    expect(rules.result.structuredContent.journals[0].status.breached).toBe(true);
+    expect(rules.result.structuredContent.journals[0].status.dailyLossAlert.show).toBe(true);
+
+    const stats = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'get_stats', arguments: { journalId: 'j1', groupBy: 'session' } },
+    }));
+    expect(stats.result.structuredContent.groups).toEqual([
+      expect.objectContaining({ key: 'London', count: 1, totalPnl: -25 }),
+    ]);
   });
 
   it('rejects a bad key, a disallowed origin, and a rate limit before running a tool', async () => {

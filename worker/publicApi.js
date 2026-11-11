@@ -8,11 +8,14 @@
 import { normalizeCustomFieldDefs } from '../src/utils/customTradeFields.js';
 import { buildStoredTrade, withDerivedRiskAmount } from '../src/utils/tradeDoc.js';
 import { inspectApiTradePatch, prepareApiTrade, storedTradeInput } from '../src/utils/tradeValidation.js';
-import { computeApiStats } from '../src/utils/apiStats.js';
+import { computeApiStats, computeBacktestApiStats, parseGroupBy } from '../src/utils/apiStats.js';
+import { dailyLossAlertState } from '../src/utils/dailyLossAlert.js';
 import { windowBounds } from '../src/utils/dashboardStats.js';
+import { evaluateJournalRisk } from '../src/utils/journalRiskRules.js';
+import { entryDayKey } from '../src/utils/mentalityJournalForm.js';
 import { tradeImageIds } from '../src/utils/tradeImageSlots.js';
 import {
-  buildTradesQuery, decodeFields, docIdFromName, encodeFields, fsBase, sha256Hex, toPublicTrade,
+  buildIdOrderedQuery, buildTradesQuery, decodeFields, docIdFromName, encodeFields, fsBase, sha256Hex, toPublicTrade,
 } from './firestoreValues.js';
 
 const LIST_DEFAULT = 50;
@@ -135,6 +138,7 @@ function decodeCursor(cursor) {
     if (payload.t != null && typeof payload.t !== 'string') return null;
     if (!Array.isArray(payload.q) || payload.q.length !== 6) return null;
     if (!payload.q.every((part) => typeof part === 'string')) return null;
+    if (payload.k != null && payload.k !== 'live' && payload.k !== 'backtest') return null;
     return payload;
   } catch {
     return null;
@@ -224,13 +228,18 @@ export async function handlePublicApi(request, env, deps) {
   const fail = (status, error) => json(cors, status, { error });
 
   try {
-    if (path === '/api/v1/journals' && request.method === 'GET') return await listJournals(ctx);
+    if (path === '/api/v1/journals' && request.method === 'GET') return await listJournals(ctx, url);
     if (path === '/api/v1/trades' && request.method === 'POST') return await createTrade(request, ctx);
     if (path === '/api/v1/trades' && request.method === 'GET') return await listTrades(url, ctx);
     const tradeItem = path.match(/^\/api\/v1\/trades\/([^/]+)$/);
     if (tradeItem && request.method === 'PATCH') return await updateTrade(tradeItem[1], request, ctx);
     if (tradeItem && request.method === 'DELETE') return await deleteTrade(tradeItem[1], ctx);
     if (path === '/api/v1/stats' && request.method === 'GET') return await journalStats(url, ctx);
+    if (path === '/api/v1/plans' && request.method === 'GET') return await listPlans(ctx);
+    const planItem = path.match(/^\/api\/v1\/plans\/([^/]+)$/);
+    if (planItem && request.method === 'GET') return await getPlan(planItem[1], ctx);
+    if (path === '/api/v1/daily-journals' && request.method === 'GET') return await listDailyJournals(url, ctx);
+    if (path === '/api/v1/risk-rules' && request.method === 'GET') return await listRiskRules(url, ctx);
     if (path === '/api/v1/keys' && request.method === 'POST') return await createKey(request, ctx);
     if (path === '/api/v1/keys' && request.method === 'GET') return await listKeys(ctx);
     const keyMatch = path.match(/^\/api\/v1\/keys\/([^/]+)$/);
@@ -411,12 +420,21 @@ async function releaseIdempotencyIfUnused(ctx, idemId, tradeId) {
 
 export async function listTrades(url, ctx) {
   const { cors, auth, base, fetchFn } = ctx;
+  const typeParsed = parseJournalType(url.searchParams.get('type'));
+  if (!typeParsed.ok) return json(cors, 400, { error: typeParsed.error });
+  const type = typeParsed.value;
   let journalId = url.searchParams.get('journalId') || '';
   const journalName = url.searchParams.get('journal') || '';
+  // Omitting type and journal keeps the live trade list. A backtest journal
+  // id, or type=backtest, reads users/{uid}/backtests instead.
+  let kind = type === 'backtest' ? 'backtest' : 'live';
   if (hasText(journalId) || hasText(journalName)) {
-    const resolved = await resolveJournal(ctx, { journalId, journal: journalName });
+    const resolved = await resolveJournal(ctx, {
+      journalId, journal: journalName, includeBacktest: true, type,
+    });
     if (!resolved.ok) return json(cors, resolved.status, { error: resolved.error });
     journalId = resolved.journalId;
+    kind = resolved.kind;
   }
   const status = url.searchParams.get('status') || '';
   const pair = url.searchParams.get('pair') || '';
@@ -432,11 +450,23 @@ export async function listTrades(url, ctx) {
     || (to && Number.isNaN(new Date(to).getTime()) && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
     return json(cors, 400, { error: 'invalid from/to date' });
   }
+  if (kind === 'backtest' && status) return json(cors, 400, { error: 'status does not apply to backtest trades' });
   const limitRaw = url.searchParams.get('limit');
   const limit = limitRaw == null ? LIST_DEFAULT : Number(limitRaw);
   if (!Number.isInteger(limit) || limit < 1 || limit > LIST_MAX) return json(cors, 400, { error: `limit must be 1–${LIST_MAX}` });
 
-  const filterKey = listFilterKey(journalId, status, pair, direction, from, to);
+  const filterKey = listFilterKey(
+    journalId,
+    kind === 'backtest' ? `type:${type || 'backtest'}` : status,
+    pair,
+    direction,
+    from,
+    to,
+  );
+  if (kind === 'backtest') {
+    return listBacktestTrades(url, ctx, { journalId, pair, direction, from, to, order, limit, filterKey });
+  }
+
   let startAfter;
   const cursor = url.searchParams.get('cursor');
   if (cursor) {
@@ -444,7 +474,7 @@ export async function listTrades(url, ctx) {
     const prefix = `projects/${ctx.projectId}/databases/(default)/documents/users/${auth.uid}/trades/`;
     const rest = decoded ? decoded.n.slice(prefix.length) : '';
     const sameFilters = decoded && decoded.q.every((part, i) => part === filterKey[i]);
-    if (!decoded || decoded.o !== order || !decoded.n.startsWith(prefix) || !rest || rest.includes('/') || !sameFilters) {
+    if (!decoded || decoded.k === 'backtest' || decoded.o !== order || !decoded.n.startsWith(prefix) || !rest || rest.includes('/') || !sameFilters) {
       return json(cors, 400, { error: 'invalid cursor' });
     }
     startAfter = { name: decoded.n, entryDate: decoded.t || null };
@@ -484,11 +514,12 @@ export async function listTrades(url, ctx) {
 }
 
 export async function journalStats(url, ctx) {
-  const { cors, auth, base, fetchFn } = ctx;
+  const { cors } = ctx;
   const resolved = await resolveJournal(ctx, {
     journalId: url.searchParams.get('journalId') || '',
     journal: url.searchParams.get('journal') || '',
     required: true,
+    includeBacktest: true,
   });
   if (!resolved.ok) return json(cors, resolved.status, { error: resolved.error });
   const journalId = resolved.journalId;
@@ -501,13 +532,32 @@ export async function journalStats(url, ctx) {
     return json(cors, 400, { error: 'invalid from/to date' });
   }
 
+  const grouped = parseGroupBy(url.searchParams.get('groupBy'));
+  if (!grouped.ok) return json(cors, 400, { error: grouped.error });
+  const now = ctx.now ? ctx.now() : new Date();
+  if (resolved.kind === 'backtest') {
+    const loaded = await loadBacktestTrades(ctx, journalId);
+    const stats = computeBacktestApiStats(loaded.trades.map((row) => row.data), {
+      period, from: from || null, to: to || null, now, groupBy: grouped.value,
+    });
+    return json(cors, 200, { journalId, ...stats, truncated: loaded.truncated });
+  }
+
+  const loaded = await loadLiveTrades(ctx, journalId);
+  const stats = computeApiStats(loaded.trades, Number(journal.data.initialBalance) || 0, {
+    period, from: from || null, to: to || null, now, groupBy: grouped.value,
+  });
+  return json(cors, 200, { journalId, type: 'live', isBacktest: false, ...stats, truncated: loaded.truncated });
+}
+
+async function loadLiveTrades(ctx, journalId) {
   const trades = [];
   let startAfterName = '';
   let truncated = false;
   for (;;) {
     const rows = await runQuery(
-      fetchFn, auth.admin,
-      `${base}/documents/users/${auth.uid}:runQuery`,
+      ctx.fetchFn, ctx.auth.admin,
+      `${ctx.base}/documents/users/${ctx.auth.uid}:runQuery`,
       buildTradesQuery({ journalId, limit: PAGE, sort: 'name', startAfterName: startAfterName || undefined }),
     );
     if (!rows.length) break;
@@ -516,11 +566,7 @@ export async function journalStats(url, ctx) {
     if (trades.length >= STATS_CAP) { truncated = rows.length === PAGE; break; }
     if (rows.length < PAGE) break;
   }
-  const now = ctx.now ? ctx.now() : new Date();
-  const stats = computeApiStats(trades, Number(journal.data.initialBalance) || 0, {
-    period, from: from || null, to: to || null, now,
-  });
-  return json(cors, 200, { journalId, ...stats, truncated });
+  return { trades, truncated };
 }
 
 function hasText(value) {
@@ -541,11 +587,26 @@ function validDocId(id) {
   return id.length >= 1 && id.length <= 128 && !id.includes('/') && !id.includes('\\') && id !== '.' && id !== '..';
 }
 
-function journalUrl(ctx, id) {
-  return `${ctx.base}/documents/users/${ctx.auth.uid}/journals/${encodeURIComponent(id)}`;
+function parseJournalType(raw) {
+  if (raw == null || raw === '') return { ok: true, value: '' };
+  if (typeof raw !== 'string') return { ok: false, error: 'type must be live or backtest' };
+  const value = raw.trim();
+  if (!value) return { ok: true, value: '' };
+  if (value !== 'live' && value !== 'backtest') return { ok: false, error: 'type must be live or backtest' };
+  return { ok: true, value };
 }
 
-async function listJournalDocs(ctx) {
+function journalCollection(kind) {
+  return kind === 'backtest' ? 'backtestJournals' : 'journals';
+}
+
+function journalKinds({ includeBacktest = false, type = '' } = {}) {
+  if (type === 'backtest') return ['backtest'];
+  if (type === 'live' || !includeBacktest) return ['live'];
+  return ['live', 'backtest'];
+}
+
+async function listCollectionDocs(ctx, collection) {
   const out = [];
   let pageToken = '';
   for (let page = 0; page < JOURNAL_PAGE_CAP; page += 1) {
@@ -553,7 +614,7 @@ async function listJournalDocs(ctx) {
     if (pageToken) qs.set('pageToken', pageToken);
     const res = await fsFetch(
       ctx.fetchFn, ctx.auth.admin,
-      `${ctx.base}/documents/users/${ctx.auth.uid}/journals?${qs}`,
+      `${ctx.base}/documents/users/${ctx.auth.uid}/${collection}?${qs}`,
     );
     if (res.status === 404) return out;
     if (!res.ok) throw new Error(`firestore ${res.status}`);
@@ -567,27 +628,78 @@ async function listJournalDocs(ctx) {
   return out;
 }
 
-function publicJournal(row) {
+async function readJournal(ctx, kind, id) {
+  const url = `${ctx.base}/documents/users/${ctx.auth.uid}/${journalCollection(kind)}/${encodeURIComponent(id)}`;
+  const doc = await readDoc(ctx.fetchFn, ctx.auth.admin, url);
+  if (!doc) return null;
+  return { ...doc, kind };
+}
+
+async function journalsInScope(ctx, kinds) {
+  const rows = [];
+  for (const kind of kinds) {
+    const docs = await listCollectionDocs(ctx, journalCollection(kind));
+    for (const row of docs) rows.push({ ...row, kind });
+  }
+  return rows;
+}
+
+function foundJournal(row) {
+  return { ok: true, journalId: row.id, journal: row, kind: row.kind || 'live' };
+}
+
+function ambiguousName(rows) {
+  const kinds = new Set(rows.map((row) => row.kind || 'live'));
+  const label = (row) => (kinds.size > 1 ? `${row.kind || 'live'}:${row.id}` : row.id);
+  return { ok: false, status: 409, error: `journal name is ambiguous: ${rows.map(label).join(', ')}` };
+}
+
+function publicJournal(row, kind = 'live') {
   const data = row.data || {};
-  return {
+  const backtest = kind === 'backtest';
+  const journal = {
     id: row.id,
     name: typeof data.name === 'string' ? data.name : '',
-    exchange: typeof data.exchange === 'string' ? data.exchange : '',
-    assetClass: typeof data.assetClass === 'string' && data.assetClass ? data.assetClass : 'crypto',
-    currency: typeof data.currency === 'string' ? data.currency : '',
-    initialBalance: Number(data.initialBalance) || 0,
-    archived: data.archived === true,
-    starred: data.starred === true,
+    exchange: backtest ? '' : (typeof data.exchange === 'string' ? data.exchange : ''),
+    assetClass: backtest
+      ? null
+      : (typeof data.assetClass === 'string' && data.assetClass ? data.assetClass : 'crypto'),
+    currency: backtest ? '' : (typeof data.currency === 'string' ? data.currency : ''),
+    initialBalance: backtest ? null : (Number(data.initialBalance) || 0),
+    archived: backtest ? false : data.archived === true,
+    starred: backtest ? false : data.starred === true,
     isDefault: data.isDefault === true,
+    type: backtest ? 'backtest' : 'live',
+    isBacktest: backtest,
   };
+  if (backtest) {
+    journal.description = typeof data.description === 'string' ? data.description : '';
+    journal.createdAt = data.createdAt || null;
+    journal.updatedAt = data.updatedAt || null;
+  }
+  return journal;
+}
+
+function comparePublicJournals(a, b) {
+  const starred = (b.starred === true) - (a.starred === true);
+  if (starred) return starred;
+  const byName = a.name.localeCompare(b.name);
+  if (byName) return byName;
+  if (a.id !== b.id) return a.id < b.id ? -1 : 1;
+  if (a.type === b.type) return 0;
+  return a.type < b.type ? -1 : 1;
 }
 
 /**
  * journalId is an exact document id. journal is a name (trim, case-insensitive)
  * or, when it equals a journal id, that id. Lookups stay under users/{uid}.
  * An omitted selector is journalId '' unless required, which keeps the old 400.
+ *
+ * Writes pass includeBacktest false and only see users/{uid}/journals.
+ * Reads pass includeBacktest so a backtest journal id resolves to
+ * users/{uid}/backtestJournals. type live|backtest limits that search.
  */
-async function resolveJournal(ctx, { journalId = '', journal = '', required = false } = {}) {
+async function resolveJournal(ctx, { journalId = '', journal = '', required = false, includeBacktest = false, type = '' } = {}) {
   const idParsed = selector(journalId, 'invalid journalId');
   if (!idParsed.ok) return idParsed;
   const nameParsed = selector(journal, 'invalid journal');
@@ -599,43 +711,368 @@ async function resolveJournal(ctx, { journalId = '', journal = '', required = fa
   if (!id && !name) {
     return required
       ? { ok: false, status: 400, error: 'journalId is required' }
-      : { ok: true, journalId: '', journal: null };
+      : { ok: true, journalId: '', journal: null, kind: 'live' };
   }
 
-  if (id && !name) {
-    const doc = await readDoc(ctx.fetchFn, ctx.auth.admin, journalUrl(ctx, id));
-    if (!doc) return { ok: false, status: 404, error: 'journal not found' };
-    return { ok: true, journalId: id, journal: doc };
-  }
+  const scope = { includeBacktest, type, kinds: journalKinds({ includeBacktest, type }) };
+  if (id && !name) return resolveJournalById(ctx, id, scope);
+  if (!id) return resolveJournalByName(ctx, name, scope);
 
-  if (!id) {
-    const rows = await listJournalDocs(ctx);
-    const byId = rows.find((row) => row.id === name);
-    if (byId) return { ok: true, journalId: byId.id, journal: byId };
-    const folded = foldName(name);
-    const named = rows.filter((row) => foldName(row.data.name) === folded);
-    if (named.length === 1) return { ok: true, journalId: named[0].id, journal: named[0] };
-    if (!named.length) return { ok: false, status: 404, error: 'journal not found' };
-    return { ok: false, status: 409, error: `journal name is ambiguous: ${named.map((row) => row.id).join(', ')}` };
-  }
-
-  const doc = await readDoc(ctx.fetchFn, ctx.auth.admin, journalUrl(ctx, id));
-  if (!doc) return { ok: false, status: 404, error: 'journal not found' };
-  const sameName = foldName(doc.data.name) === foldName(name);
+  const doc = await resolveJournalById(ctx, id, scope);
+  if (!doc.ok) return doc;
+  const sameName = foldName(doc.journal.data.name) === foldName(name);
   if (name !== id && !sameName) return { ok: false, status: 400, error: 'journalId does not match journal' };
-  return { ok: true, journalId: id, journal: doc };
+  return doc;
 }
 
-export async function listJournals(ctx) {
-  const rows = await listJournalDocs(ctx);
-  rows.sort((a, b) => {
-    const starred = (b.data.starred === true) - (a.data.starred === true);
-    if (starred) return starred;
-    const byName = publicJournal(a).name.localeCompare(publicJournal(b).name);
-    if (byName) return byName;
+async function resolveJournalById(ctx, id, scope) {
+  const found = [];
+  for (const kind of scope.kinds) {
+    const doc = await readJournal(ctx, kind, id);
+    if (doc) found.push(doc);
+  }
+  if (found.length === 1) return foundJournal(found[0]);
+  if (found.length > 1) return { ok: false, status: 409, error: 'journal id is ambiguous' };
+  if (scope.includeBacktest && (scope.type === 'live' || scope.type === 'backtest')) {
+    const other = scope.type === 'live' ? 'backtest' : 'live';
+    const alt = await readJournal(ctx, other, id);
+    if (alt) return { ok: false, status: 400, error: 'journal type does not match type filter' };
+  }
+  return { ok: false, status: 404, error: 'journal not found' };
+}
+
+async function resolveJournalByName(ctx, name, scope) {
+  const rows = await journalsInScope(ctx, scope.kinds);
+  const byId = rows.filter((row) => row.id === name);
+  if (byId.length === 1) return foundJournal(byId[0]);
+  if (byId.length > 1) return { ok: false, status: 409, error: 'journal id is ambiguous' };
+  const folded = foldName(name);
+  const named = rows.filter((row) => foldName(row.data.name) === folded);
+  if (named.length === 1) return foundJournal(named[0]);
+  if (named.length > 1) return ambiguousName(named);
+  if (scope.includeBacktest && (scope.type === 'live' || scope.type === 'backtest')) {
+    const other = scope.type === 'live' ? ['backtest'] : ['live'];
+    const alt = await journalsInScope(ctx, other);
+    const hit = alt.some((row) => row.id === name || foldName(row.data.name) === folded);
+    if (hit) return { ok: false, status: 400, error: 'journal type does not match type filter' };
+  }
+  return { ok: false, status: 404, error: 'journal not found' };
+}
+
+function backtestListMillis(trade) {
+  const raw = trade?.date || trade?.createdAt || '';
+  if (raw == null || raw === '') return null;
+  const ms = new Date(raw).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function inBacktestRange(trade, from, to) {
+  if (from == null && to == null) return true;
+  const ms = backtestListMillis(trade);
+  if (ms == null) return false;
+  const { periodStart, periodEnd } = windowBounds('all', { from, to });
+  if (from != null && periodStart && ms < periodStart.getTime()) return false;
+  if (to != null && periodEnd && ms > periodEnd.getTime()) return false;
+  return true;
+}
+
+// Dated rows order by date (createdAt when date is missing). Undated rows
+// sort last. The same timestamp ties break by document id, in `order`.
+function compareBacktest(a, b, order) {
+  const dir = order === 'asc' ? 1 : -1;
+  const am = a.ms;
+  const bm = b.ms;
+  if (am != null && bm != null && am !== bm) return am < bm ? -dir : dir;
+  if (am == null && bm != null) return 1;
+  if (am != null && bm == null) return -1;
+  if (a.id === b.id) return 0;
+  return a.id < b.id ? -dir : dir;
+}
+
+function publicBacktestTrade(row) {
+  const data = { ...(row.data || {}) };
+  const journalId = typeof data.backtestJournalId === 'string' ? data.backtestJournalId : '';
+  return toPublicTrade({
+    ...data,
+    id: row.id,
+    journalId,
+    type: 'backtest',
+    isBacktest: true,
+  });
+}
+
+async function loadBacktestTrades(ctx, journalId) {
+  const trades = [];
+  let startAfterName = '';
+  let truncated = false;
+  let scanned = 0;
+  for (;;) {
+    const rows = await runQuery(
+      ctx.fetchFn, ctx.auth.admin,
+      `${ctx.base}/documents/users/${ctx.auth.uid}:runQuery`,
+      buildIdOrderedQuery({
+        collectionId: 'backtests',
+        field: journalId ? 'backtestJournalId' : '',
+        value: journalId || '',
+        limit: PAGE,
+        startAfterName: startAfterName || undefined,
+      }),
+    );
+    if (!rows.length) break;
+    let consumedAll = true;
+    for (let i = 0; i < rows.length; i += 1) {
+      const row = rows[i];
+      scanned += 1;
+      const linked = typeof row.data.backtestJournalId === 'string' && row.data.backtestJournalId;
+      if (journalId || linked) trades.push(row);
+      if (scanned >= STATS_CAP) {
+        consumedAll = i === rows.length - 1;
+        break;
+      }
+    }
+    startAfterName = rows[rows.length - 1].name;
+    if (scanned >= STATS_CAP) {
+      truncated = !consumedAll || rows.length === PAGE;
+      break;
+    }
+    if (rows.length < PAGE) break;
+  }
+  return { trades, truncated };
+}
+
+async function listBacktestTrades(url, ctx, { journalId, pair, direction, from, to, order, limit, filterKey }) {
+  const { cors, auth } = ctx;
+  const loaded = await loadBacktestTrades(ctx, journalId);
+  const filtered = loaded.trades.filter((row) => {
+    if (pair && row.data.pair !== pair) return false;
+    if (direction && row.data.direction !== direction) return false;
+    return inBacktestRange(row.data, from, to);
+  });
+  const decorated = filtered.map((row) => ({
+    row,
+    ms: backtestListMillis(row.data),
+    id: row.id,
+  }));
+  decorated.sort((a, b) => compareBacktest(a, b, order));
+
+  let start = 0;
+  const cursor = url.searchParams.get('cursor');
+  if (cursor) {
+    const decoded = decodeCursor(cursor);
+    const prefix = `projects/${ctx.projectId}/databases/(default)/documents/users/${auth.uid}/backtests/`;
+    const rest = decoded ? decoded.n.slice(prefix.length) : '';
+    const sameFilters = decoded && decoded.q.every((part, i) => part === filterKey[i]);
+    if (!decoded || decoded.k !== 'backtest' || decoded.o !== order || !decoded.n.startsWith(prefix) || !rest || rest.includes('/') || !sameFilters) {
+      return json(cors, 400, { error: 'invalid cursor' });
+    }
+    let cursorMs = null;
+    if (decoded.t) {
+      cursorMs = new Date(decoded.t).getTime();
+      if (Number.isNaN(cursorMs)) return json(cors, 400, { error: 'invalid cursor' });
+    }
+    const cursorKey = { ms: cursorMs, id: docIdFromName(decoded.n) };
+    const idx = decorated.findIndex((item) => compareBacktest(item, cursorKey, order) > 0);
+    start = idx < 0 ? decorated.length : idx;
+  }
+
+  const page = decorated.slice(start, start + limit);
+  const last = page[page.length - 1];
+  const more = start + page.length < decorated.length;
+  const nextCursor = more && last ? encodeCursor({
+    v: 2,
+    o: order,
+    t: last.ms == null ? null : new Date(last.ms).toISOString(),
+    n: last.row.name,
+    q: filterKey,
+    k: 'backtest',
+  }) : null;
+  return json(cors, 200, {
+    trades: page.map((item) => publicBacktestTrade(item.row)),
+    nextCursor,
+    truncated: loaded.truncated,
+  });
+}
+
+function publicPlanSummary(row) {
+  const data = row.data || {};
+  const list = (value) => (Array.isArray(value) ? value : []);
+  return {
+    id: row.id,
+    name: typeof data.name === 'string' ? data.name : '',
+    description: typeof data.description === 'string' ? data.description : '',
+    isActive: data.isActive === true,
+    color: typeof data.color === 'string' ? data.color : '',
+    pairs: list(data.pairs),
+    timeframes: list(data.timeframes),
+    sessions: list(data.sessions),
+    maxDailyLoss: data.maxDailyLoss ?? null,
+    maxPositions: data.maxPositions ?? null,
+    createdAt: data.createdAt || null,
+    updatedAt: data.updatedAt || null,
+  };
+}
+
+function publicPlan(row) {
+  return toPublicTrade({ ...(row.data || {}), id: row.id });
+}
+
+function comparePlans(a, b) {
+  const active = (b.isActive === true) - (a.isActive === true);
+  if (active) return active;
+  const byName = a.name.localeCompare(b.name);
+  if (byName) return byName;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+function dayQuery(raw) {
+  if (raw == null || raw === '') return { ok: true, value: '' };
+  if (typeof raw !== 'string') return { ok: false, error: 'invalid from/to date' };
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw.trim());
+  if (!match) return { ok: false, error: 'invalid from/to date' };
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) {
+    return { ok: false, error: 'invalid from/to date' };
+  }
+  return { ok: true, value: `${match[1]}-${match[2]}-${match[3]}` };
+}
+
+function publicDailyEntry(row, kind) {
+  return toPublicTrade({ ...(row.data || {}), id: row.id, kind });
+}
+
+/**
+ * Morning and evening entries live on the user, not on a trading journal.
+ * journalId, when passed, must be a live journal the key owns. It does not
+ * filter the entries, because those documents have no journalId.
+ */
+export async function listDailyJournals(url, ctx) {
+  const from = dayQuery(url.searchParams.get('from'));
+  if (!from.ok) return json(ctx.cors, 400, { error: from.error });
+  const to = dayQuery(url.searchParams.get('to'));
+  if (!to.ok) return json(ctx.cors, 400, { error: to.error });
+  const kindRaw = url.searchParams.get('kind') || '';
+  if (kindRaw && kindRaw !== 'morning' && kindRaw !== 'evening') {
+    return json(ctx.cors, 400, { error: 'kind must be morning or evening' });
+  }
+  const journalId = url.searchParams.get('journalId') || '';
+  const journalName = url.searchParams.get('journal') || '';
+  if (hasText(journalId) || hasText(journalName)) {
+    const resolved = await resolveJournal(ctx, { journalId, journal: journalName });
+    if (!resolved.ok) return json(ctx.cors, resolved.status, { error: resolved.error });
+  }
+  const morning = kindRaw === 'evening' ? [] : await listCollectionDocs(ctx, 'morningJournals');
+  const evening = kindRaw === 'morning' ? [] : await listCollectionDocs(ctx, 'eveningJournals');
+  const entries = [
+    ...morning.map((row) => publicDailyEntry(row, 'morning')),
+    ...evening.map((row) => publicDailyEntry(row, 'evening')),
+  ].filter((entry) => {
+    const day = entryDayKey(entry);
+    if ((from.value || to.value) && !day) return false;
+    if (from.value && day < from.value) return false;
+    if (to.value && day > to.value) return false;
+    return true;
+  });
+  entries.sort((a, b) => {
+    const byDate = String(b.date || '').localeCompare(String(a.date || ''));
+    if (byDate) return byDate;
+    if (a.kind !== b.kind) return a.kind === 'morning' ? -1 : 1;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
-  return json(ctx.cors, 200, { journals: rows.map(publicJournal) });
+  return json(ctx.cors, 200, {
+    journalId: journalId || null,
+    filteredByJournal: false,
+    entries,
+  });
+}
+
+function riskJournalRow(journal, trades, { now, truncated }) {
+  const data = journal.data || {};
+  const rules = data.riskRules ?? null;
+  const alert = data.dailyLossAlert ?? null;
+  const balance = Number(data.initialBalance) || 0;
+  const measured = evaluateJournalRisk(trades, rules, { now, journalId: journal.id, balance });
+  const daily = dailyLossAlertState(trades, alert, { now, journalId: journal.id });
+  return {
+    journalId: journal.id,
+    name: typeof data.name === 'string' ? data.name : '',
+    riskRules: rules,
+    dailyLossAlert: alert,
+    status: {
+      dayKey: measured.dayKey,
+      weekStart: measured.weekStart,
+      weeklyLoss: measured.weeklyLoss,
+      dailyLossPercent: measured.dailyLossPercent,
+      weeklyLossPercent: measured.weeklyLossPercent,
+      maxTrades: measured.maxTrades,
+      tradingHours: measured.tradingHours,
+      dailyLossAlert: daily,
+      breached: measured.breached || daily.show,
+    },
+    truncated,
+  };
+}
+
+export async function listRiskRules(url, ctx) {
+  const journalId = url.searchParams.get('journalId') || '';
+  const journalName = url.searchParams.get('journal') || '';
+  let journals;
+  if (hasText(journalId) || hasText(journalName)) {
+    const resolved = await resolveJournal(ctx, {
+      journalId, journal: journalName, includeBacktest: true, required: true,
+    });
+    if (!resolved.ok) return json(ctx.cors, resolved.status, { error: resolved.error });
+    if (resolved.kind === 'backtest') {
+      return json(ctx.cors, 400, { error: 'risk rules apply to live journals' });
+    }
+    journals = [resolved.journal];
+  } else {
+    journals = await listCollectionDocs(ctx, 'journals');
+  }
+  const loaded = await loadLiveTrades(ctx, journals.length === 1 ? journals[0].id : '');
+  const now = ctx.now ? ctx.now() : new Date();
+  const rows = journals.map((journal) => riskJournalRow(journal, loaded.trades, { now, truncated: loaded.truncated }));
+  rows.sort((a, b) => a.name.localeCompare(b.name) || (a.journalId < b.journalId ? -1 : a.journalId > b.journalId ? 1 : 0));
+  return json(ctx.cors, 200, { journals: rows });
+}
+
+export async function listPlans(ctx) {
+  const rows = await listCollectionDocs(ctx, 'tradingPlans');
+  const plans = rows.map(publicPlanSummary);
+  plans.sort(comparePlans);
+  return json(ctx.cors, 200, { plans });
+}
+
+export async function getPlan(planId, ctx) {
+  if (typeof planId !== 'string') return json(ctx.cors, 400, { error: 'invalid plan id' });
+  let id;
+  try { id = decodeURIComponent(planId); } catch { return json(ctx.cors, 400, { error: 'invalid plan id' }); }
+  if (!validDocId(id)) return json(ctx.cors, 400, { error: 'invalid plan id' });
+  const doc = await readDoc(
+    ctx.fetchFn, ctx.auth.admin,
+    `${ctx.base}/documents/users/${ctx.auth.uid}/tradingPlans/${encodeURIComponent(id)}`,
+  );
+  if (!doc) return json(ctx.cors, 404, { error: 'plan not found' });
+  return json(ctx.cors, 200, { plan: publicPlan(doc) });
+}
+
+export async function listJournals(ctx, url) {
+  const parsed = parseJournalType(url?.searchParams?.get('type'));
+  if (!parsed.ok) return json(ctx.cors, 400, { error: parsed.error });
+  const type = parsed.value;
+  const journals = [];
+  if (type !== 'backtest') {
+    const live = await listCollectionDocs(ctx, 'journals');
+    journals.push(...live.map((row) => publicJournal(row, 'live')));
+  }
+  if (type !== 'live') {
+    const backtests = await listCollectionDocs(ctx, 'backtestJournals');
+    journals.push(...backtests.map((row) => publicJournal(row, 'backtest')));
+  }
+  journals.sort(comparePublicJournals);
+  return json(ctx.cors, 200, { journals });
 }
 
 function preserveCreatedAt(stored, existing) {

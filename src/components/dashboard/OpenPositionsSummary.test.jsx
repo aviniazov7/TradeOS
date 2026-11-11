@@ -119,7 +119,8 @@ describe('open positions summary', () => {
     terminal.snapshots = { mexc: { positions: BOOK, orders: [] } };
     const view = await mount();
     const html = view.html();
-    expect(html).toContain('md:h-16');
+    expect(html).toContain('open-positions-strip');
+    expect(html).toContain('positions');
     expect(html).not.toContain('grid-cols-3');
     expect(html).toContain('>4<');
     expect(html).toContain('לא ממומש');
