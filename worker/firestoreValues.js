@@ -114,6 +114,29 @@ export function buildTradesQuery({
   return q;
 }
 
+/**
+ * One equality filter and document-id order.
+ *
+ * Same shape as `buildTradesQuery` with `sort: 'name'` (the stats scan):
+ * ordering by `__name__` does not add a composite index. Used to page
+ * `backtests` by `backtestJournalId` under the caller's user document.
+ * Omit `field` to walk the whole subcollection.
+ */
+export function buildIdOrderedQuery({ collectionId, field, value, limit, startAfterName }) {
+  const q = {
+    from: [{ collectionId }],
+    limit,
+    orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
+  };
+  if (field && value) {
+    q.where = {
+      fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: value } },
+    };
+  }
+  if (startAfterName) q.startAt = { values: [{ referenceValue: startAfterName }], before: false };
+  return q;
+}
+
 export async function sha256Hex(text) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
