@@ -2,7 +2,6 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import CoinIcon from '../shared/CoinIcon';
-import Card from '../shared/Card';
 import { DirBadge, Num } from '../terminal/terminalUi';
 import { HOME_POLL_MS, useTerminalData } from '../../hooks/useTerminalData';
 import {
@@ -16,7 +15,7 @@ import { chipsThatFit } from '../../utils/chipsThatFit';
 const NONE = [];
 const TOP = 3;
 const posKey = (p) => `${p.source}|${p.externalId || ''}|${p.pair}|${p.direction}`;
-const CHIP = 'inline-flex items-center gap-1 h-7 px-1.5 rounded-lg bg-bg-tertiary border border-border-primary whitespace-nowrap';
+const CHIP = 'pos-chip shrink-0';
 
 function gapPx(el) {
   const raw = getComputedStyle(el).columnGap || '0';
@@ -97,80 +96,60 @@ export default function OpenPositionsSummary({ hidden = false }) {
   const hiddenCount = posRows.length - shown.length;
 
   return (
-    <Card
-      data-testid="open-positions-strip"
-      className="rounded-2xl mb-4 px-3 py-2 md:h-16 md:px-4 md:py-0 flex flex-col justify-center gap-1.5 md:flex-row md:items-center md:gap-3"
-    >
-      <div className="flex items-center gap-x-1.5 min-w-0 text-[13px] leading-none">
-        <span className="font-bold text-text-primary shrink-0">פוזיציות פתוחות</span>
-        <Num className="font-bold text-text-primary">{posRows.length}</Num>
+    <section data-testid="open-positions-strip" className="positions panel" aria-label="פוזיציות פתוחות">
+      <div className="positions__lead">
+        <span className="positions__title">פוזיציות פתוחות</span>
+        <Num className="positions__count">{posRows.length}</Num>
         <Sep />
-        <span className="text-text-secondary shrink-0">לא ממומש</span>
+        <span className="text-text-secondary">לא ממומש</span>
         <Num className={`font-bold ${tone}`}>{mask(fmtUsd(totals.upnl, { signed: true }))}</Num>
         {!hidden && totals.upnlPct != null && (
           <Num className={tone}>({fmtPct(totals.upnlPct)})</Num>
         )}
-        <span className="hidden md:contents">
-          <Sep />
-          <span className="text-text-secondary shrink-0">סיכון</span>
-          <Num className="font-bold text-text-primary">{mask(fmtUsd(totals.risk))}</Num>
-        </span>
       </div>
-
-      <div className="flex items-center gap-1.5 min-w-0 md:flex-1">
-        <span className="md:hidden inline-flex items-center gap-1 text-[13px] leading-none shrink-0">
-          <span className="text-text-secondary">סיכון</span>
-          <Num className="font-bold text-text-primary">{mask(fmtUsd(totals.risk))}</Num>
-        </span>
-        <div ref={rowRef} className="relative w-0 min-w-0 flex-1 overflow-hidden">
-          <div ref={measureRef} aria-hidden className="absolute top-0 left-0 -z-10 flex items-center gap-1.5 invisible pointer-events-none">
-            {top.map(({ key, p, m }) => (
-              <span key={key} data-chip="" className={`${CHIP} shrink-0`}>
-                <CoinIcon pair={p.pair} className="w-4 h-4" />
-                <span dir="ltr" className="text-[12px] font-bold">{tickerCoinKey(p.pair) || p.pair}</span>
-                <DirBadge direction={p.direction} className="!h-4 !px-1 !text-[9px]" />
-                <span className="text-[12px] font-bold">{mask(fmtUsd(m.upnl, { signed: true }))}</span>
-              </span>
-            ))}
-            <span data-overflow="" className={`${CHIP} shrink-0 text-[12px] font-bold`}>+{posRows.length}</span>
-          </div>
-          <div className="flex w-full items-center justify-end gap-1.5">
-            {shown.map(({ key, p, m }) => (
-              <button
-                key={key}
-                type="button"
-                data-chip=""
-                onClick={openAll}
-                title={p.pair}
-                className={`${CHIP} min-w-0 max-w-full overflow-hidden cursor-pointer hover:border-accent-primary/40`}
-              >
-                <CoinIcon pair={p.pair} className="w-4 h-4" />
-                <span dir="ltr" className="text-[12px] font-bold text-text-primary">{tickerCoinKey(p.pair) || p.pair}</span>
-                <DirBadge direction={p.direction} className="!h-4 !px-1 !text-[9px]" />
-                <Num className={`text-[12px] font-bold ${pnlTone(m.upnl)}`}>{mask(fmtUsd(m.upnl, { signed: true }))}</Num>
-              </button>
-            ))}
-            {hiddenCount > 0 && (
-              <button
-                type="button"
-                data-testid="open-positions-overflow"
-                onClick={openAll}
-                aria-label={`עוד ${hiddenCount} פוזיציות`}
-                className={`${CHIP} shrink-0 cursor-pointer text-[12px] font-bold text-text-secondary hover:border-accent-primary/40`}
-              >
-                +{hiddenCount}
-              </button>
-            )}
-          </div>
+      <div ref={rowRef} className="positions__chips">
+        <div ref={measureRef} aria-hidden className="absolute top-0 left-0 -z-10 flex items-center gap-1.5 invisible pointer-events-none">
+          {top.map(({ key, p, m }) => (
+            <span key={key} data-chip="" className={CHIP}>
+              <CoinIcon pair={p.pair} className="w-4 h-4" />
+              <span dir="ltr">{tickerCoinKey(p.pair) || p.pair}</span>
+              <DirBadge direction={p.direction} className="!h-4 !px-1 !text-[9px]" />
+              <span>{mask(fmtUsd(m.upnl, { signed: true }))}</span>
+            </span>
+          ))}
+          <span data-overflow="" className={CHIP}>+{posRows.length}</span>
         </div>
-        <button
-          type="button"
-          onClick={openAll}
-          className="inline-flex items-center gap-0.5 shrink-0 text-[13px] font-semibold text-accent-hover hover:text-accent-primary cursor-pointer"
-        >
-          לכל הפוזיציות <ChevronLeft className="w-3.5 h-3.5" />
-        </button>
+        {shown.map(({ key, p, m }) => (
+          <button
+            key={key}
+            type="button"
+            data-chip=""
+            onClick={openAll}
+            title={p.pair}
+            className={CHIP}
+          >
+            <CoinIcon pair={p.pair} className="w-4 h-4" />
+            <span dir="ltr">{tickerCoinKey(p.pair) || p.pair}</span>
+            <DirBadge direction={p.direction} className="!h-4 !px-1 !text-[9px]" />
+            <Num className={`font-bold ${pnlTone(m.upnl)}`}>{mask(fmtUsd(m.upnl, { signed: true }))}</Num>
+          </button>
+        ))}
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            data-testid="open-positions-overflow"
+            onClick={openAll}
+            aria-label={`עוד ${hiddenCount} פוזיציות`}
+            className={`${CHIP} text-text-secondary`}
+          >
+            +{hiddenCount}
+          </button>
+        )}
       </div>
-    </Card>
+      <div className="positions__risk">סיכון <strong>{mask(fmtUsd(totals.risk))}</strong></div>
+      <button type="button" onClick={openAll} className="panel__link">
+        לכל הפוזיציות <ChevronLeft className="w-3.5 h-3.5" aria-hidden />
+      </button>
+    </section>
   );
 }

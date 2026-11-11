@@ -79,19 +79,23 @@ function useHeTitles(list) {
 export function NewsList({ items = [], max = 3 }) {
   const list = useMemo(() => items.slice(0, max), [items, max]);
   const heMap = useHeTitles(list);
-  if (!list.length) return <p className="text-sm text-text-secondary">טוען חדשות…</p>;
+  if (!list.length) return <p className="market-status">טוען חדשות…</p>;
   return (
-    <div className="-mt-1">
-      {list.map((a, i) => (
-        <a key={a.link || i} href={a.link} target="_blank" rel="noopener noreferrer"
-          className="group flex items-center gap-3 py-3 border-t border-border-primary/70 first:border-t-0">
-          <span className={`w-2 h-2 rounded-sm shrink-0 ${i === 0 ? 'bg-accent-primary' : 'bg-text-muted'}`} />
-          <span className="flex-1 min-w-0 text-sm text-text-primary leading-snug line-clamp-2 group-hover:text-accent-hover transition-colors">
-            {safeHebrew(heMap[a.link]?.title) || a.title}
-          </span>
-          <span className="text-xs text-text-secondary whitespace-nowrap">{heRelative(a.pubDate)}</span>
-        </a>
-      ))}
+    <div>
+      {list.map((a, i) => {
+        const source = a.sourceLabel || a.source || a.author || '';
+        const when = heRelative(a.pubDate);
+        return (
+          <a key={a.link || i} href={a.link} target="_blank" rel="noopener noreferrer" className={i === 0 ? 'news-lead' : 'news-row'}>
+            <span className="news-meta">
+              {source ? <span className="news-source">{source}</span> : null}
+              {source && when ? <span aria-hidden>·</span> : null}
+              {when ? <span>{when}</span> : null}
+            </span>
+            <h3 className="news-headline">{safeHebrew(heMap[a.link]?.title) || a.title}</h3>
+          </a>
+        );
+      })}
     </div>
   );
 }

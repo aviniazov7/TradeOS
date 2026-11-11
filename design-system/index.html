@@ -1,0 +1,2763 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#000000">
+<title>TradeOS Design System · v1.0</title>
+<meta name="description" content="An audit of the TradeOS interface and a token-driven design system proposal — dark first, built for Hebrew RTL.">
+<link rel="stylesheet" href="tokens.css">
+<style>
+  /* ======================================================================
+     This document runs on the tokens it documents.
+     ====================================================================== */
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-block-start: 96px;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--leading-relaxed);
+    color: var(--text-primary);
+    background-color: var(--bg-canvas);
+    background-image: var(--canvas-glow);
+    background-repeat: no-repeat;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  .icon {
+    width: 18px; height: 18px;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vertical-align: -3px;
+  }
+  .icon--sm { width: 14px; height: 14px; }
+  .icon--lg { width: 20px; height: 20px; }
+  .icon--xl { width: 24px; height: 24px; }
+
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    direction: ltr;
+    unicode-bidi: isolate;
+    white-space: nowrap;
+  }
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    letter-spacing: -0.01em;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  /* ---------- chrome ---------------------------------------------------- */
+  .topbar {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    height: var(--header-h);
+    padding-inline: clamp(16px, 4vw, 40px);
+    border-block-end: 1px solid var(--border-hairline);
+    background-color: color-mix(in srgb, var(--bg-canvas) 84%, transparent);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .brand__mark { width: 32px; height: 32px; flex: none; border-radius: var(--radius-control); }
+  .brand__text { min-width: 0; line-height: 1.2; }
+  .brand__name { font-size: var(--text-caption); font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
+  .brand__sub { font-size: var(--text-label); color: var(--text-tertiary); white-space: nowrap; }
+  .topbar__spacer { flex: 1 1 auto; }
+
+  .theme-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-control);
+    background: var(--bg-surface-2);
+  }
+  .theme-switch button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding-inline: 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-tertiary);
+    font: inherit;
+    font-size: var(--text-label);
+    font-weight: 600;
+    cursor: pointer;
+    transition: color var(--dur-base) var(--ease-out), background-color var(--dur-base) var(--ease-out);
+  }
+  .theme-switch button:hover { color: var(--text-primary); }
+  .theme-switch button[aria-pressed="true"] {
+    background: var(--accent-tint);
+    color: var(--accent);
+  }
+  .theme-switch .icon { width: 14px; height: 14px; }
+
+  /* ---------- shell ----------------------------------------------------- */
+  .shell {
+    display: grid;
+    grid-template-columns: 216px minmax(0, 1fr);
+    column-gap: clamp(24px, 4vw, 56px);
+    max-width: 1340px;
+    margin-inline: auto;
+    padding: clamp(24px, 4vw, 40px) clamp(16px, 4vw, 40px) 96px;
+  }
+  main { min-width: 0; max-width: 960px; }
+
+  .toc {
+    position: sticky;
+    inset-block-start: calc(var(--header-h) + 24px);
+    align-self: start;
+    max-height: calc(100dvh - var(--header-h) - 48px);
+    overflow-y: auto;
+    padding-inline-end: var(--space-2);
+  }
+  .toc__title {
+    margin: 0 0 var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .toc a {
+    display: block;
+    padding: 6px 10px;
+    border-inline-start: 2px solid transparent;
+    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+    color: var(--text-tertiary);
+    font-size: var(--text-caption);
+    line-height: 1.4;
+    text-decoration: none;
+    transition: color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out), background-color var(--dur-base) var(--ease-out);
+  }
+  .toc a:hover { color: var(--text-primary); background: var(--bg-surface-1); }
+  .toc a.is-active {
+    color: var(--text-primary);
+    border-inline-start-color: var(--accent);
+    background: var(--bg-surface-1);
+    font-weight: 500;
+  }
+  .toc a span { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); margin-inline-end: 8px; }
+  .toc a.is-active span { color: var(--accent); }
+
+  /* ---------- cover ----------------------------------------------------- */
+  .cover { padding-block: clamp(16px, 4vw, 40px) clamp(40px, 6vw, 72px); }
+  .eyebrow {
+    margin: 0 0 var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 {
+    margin: 0 0 var(--space-5);
+    font-size: clamp(32px, 4.6vw, 48px);
+    line-height: 1.06;
+    letter-spacing: -0.03em;
+    font-weight: 800;
+    max-width: 18ch;
+  }
+  .cover__lede {
+    margin: 0 0 var(--space-6);
+    max-width: 58ch;
+    font-size: var(--text-body-lg);
+    line-height: var(--leading-relaxed);
+    color: var(--text-secondary);
+  }
+  .meta-row { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-block-end: var(--space-8); }
+  .meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding-inline: 10px;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-pill);
+    background: var(--bg-surface-1);
+    font-size: var(--text-label);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .meta .icon { width: 13px; height: 13px; color: var(--accent); }
+
+  .cover__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+  .cover__card {
+    padding: var(--space-4);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-card);
+    background: var(--bg-surface-1);
+    box-shadow: var(--elev-1);
+  }
+  .cover__card-title { margin: 0 0 4px; font-size: var(--text-body-sm); font-weight: 700; }
+  .cover__card p { margin: 0; font-size: var(--text-caption); line-height: 1.5; color: var(--text-tertiary); }
+  .cover__card .icon { color: var(--accent); margin-block-end: 10px; }
+
+  /* ---------- sections -------------------------------------------------- */
+  section { scroll-margin-block-start: 96px; }
+  .section { padding-block: clamp(40px, 6vw, 64px); border-block-start: 1px solid var(--divider); }
+  .section:first-of-type { border-block-start: 0; }
+  .section__head { margin-block-end: var(--space-6); }
+  h2 {
+    margin: 0 0 var(--space-3);
+    font-size: clamp(24px, 3vw, 30px);
+    line-height: var(--leading-tight);
+    letter-spacing: -0.025em;
+    font-weight: 800;
+  }
+  .lede {
+    margin: 0;
+    max-width: var(--measure);
+    font-size: var(--text-body-lg);
+    line-height: var(--leading-relaxed);
+    color: var(--text-secondary);
+  }
+  h3 {
+    margin: clamp(32px, 5vw, 48px) 0 var(--space-3);
+    font-size: var(--text-title);
+    line-height: var(--leading-snug);
+    letter-spacing: -0.015em;
+    font-weight: 700;
+  }
+  h3:first-of-type { margin-block-start: 0; }
+  h4 {
+    margin: var(--space-6) 0 var(--space-2);
+    font-size: var(--text-body-sm);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--text-primary);
+  }
+  p { margin: 0 0 var(--space-4); max-width: var(--measure); color: var(--text-secondary); }
+  p strong, li strong { color: var(--text-primary); font-weight: 600; }
+  ul, ol { margin: 0 0 var(--space-4); padding-inline-start: 20px; max-width: var(--measure); color: var(--text-secondary); }
+  li { margin-block-end: var(--space-2); }
+  li::marker { color: var(--text-tertiary); }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  .muted { color: var(--text-tertiary); }
+  .small { font-size: var(--text-body-sm); }
+  .mt-4 { margin-block-start: var(--space-4); }
+  .mt-6 { margin-block-start: var(--space-6); }
+
+  .panel {
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-card);
+    background: var(--bg-surface-1);
+    box-shadow: var(--elev-1);
+  }
+  .panel__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: 12px var(--space-4);
+    border-block-end: 1px solid var(--border-hairline);
+  }
+  .panel__title { font-size: var(--text-body-sm); font-weight: 600; }
+  .panel__meta {
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    color: var(--text-tertiary);
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+  .stage {
+    padding: clamp(16px, 3vw, 28px);
+    background-color: var(--bg-canvas);
+    background-image: radial-gradient(circle at 1px 1px, var(--divider) 1px, transparent 0);
+    background-size: 20px 20px;
+    border-radius: 0 0 var(--radius-card) var(--radius-card);
+    overflow: hidden;
+  }
+  .stage--pad { padding: clamp(20px, 4vw, 36px); }
+  .stage + .panel__head, .stage + .stage { border-block-start: 1px solid var(--border-hairline); }
+  .panel > .stage:first-child { border-radius: var(--radius-card); }
+
+  .spec-note {
+    margin: var(--space-3) 0 0;
+    font-size: var(--text-caption);
+    line-height: 1.55;
+    color: var(--text-tertiary);
+    max-width: var(--measure);
+  }
+  .spec-note code, p code, li code, td code, th code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    padding: 1px 5px;
+    border: 1px solid var(--border-hairline);
+    border-radius: 5px;
+    background: var(--bg-surface-2);
+    color: var(--text-primary);
+    direction: ltr;
+    unicode-bidi: isolate;
+    white-space: nowrap;
+  }
+
+  .mini-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    color: var(--text-tertiary);
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+  .row--tight { gap: var(--space-2); }
+  .stack { display: grid; gap: var(--space-5); }
+  .cols { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .cols--3 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+  /* ---------- swatches -------------------------------------------------- */
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(154px, 1fr)); gap: var(--space-3); }
+  .swatch {
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-control);
+    overflow: hidden;
+    background: var(--bg-surface-1);
+  }
+  .swatch__chip {
+    height: 62px;
+    display: grid;
+    place-items: center;
+    border-block-end: 1px solid var(--border-hairline);
+    font-size: var(--text-body);
+    font-weight: 600;
+    color: var(--text-primary);
+    box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.10);
+  }
+  .swatch__chip--line::after {
+    content: "";
+    width: 62%;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--swatch);
+  }
+  .swatch__body { padding: 8px 10px 10px; }
+  .swatch__name { font-size: var(--text-caption); font-weight: 600; line-height: 1.3; }
+  .swatch__val {
+    display: block;
+    margin-block-start: 2px;
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    color: var(--text-tertiary);
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  /* ---------- tables ---------------------------------------------------- */
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-card);
+    background: var(--bg-surface-1);
+    box-shadow: var(--elev-1);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  .token-table { font-size: var(--text-caption); min-width: 620px; }
+  .token-table th {
+    padding: 10px 14px;
+    border-block-end: 1px solid var(--border-hairline);
+    background: var(--bg-surface-2);
+    color: var(--text-tertiary);
+    font-size: var(--text-label);
+    font-weight: 600;
+    text-align: start;
+    white-space: nowrap;
+  }
+  .token-table td {
+    padding: 10px 14px;
+    border-block-end: 1px solid var(--divider);
+    color: var(--text-secondary);
+    vertical-align: top;
+    line-height: 1.45;
+  }
+  .token-table tr:last-child td { border-block-end: 0; }
+  .token-table td:first-child { color: var(--text-primary); }
+  .token-table .num, .token-table .mono { font-size: 12px; }
+  .swatch-inline {
+    display: inline-block;
+    width: 13px; height: 13px;
+    margin-inline-end: 6px;
+    border: 1px solid var(--border-hairline);
+    border-radius: 4px;
+    vertical-align: -1px;
+  }
+  .pass { color: var(--status-profit); font-weight: 600; }
+  .fail { color: var(--status-loss); font-weight: 600; }
+
+  /* ---------- findings -------------------------------------------------- */
+  .findings { display: grid; gap: var(--space-2); }
+  .finding {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-card);
+    background: var(--bg-surface-1);
+  }
+  .finding__n {
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    color: var(--accent);
+    padding-block-start: 3px;
+  }
+  .finding h4, .finding__title { margin: 0 0 4px; font-size: var(--text-body-sm); font-weight: 700; }
+  .finding p { margin: 0; font-size: var(--text-caption); line-height: 1.6; }
+  .finding__evidence {
+    margin-block-start: 6px;
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    color: var(--text-tertiary);
+    line-height: 1.5;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  /* ---------- callout --------------------------------------------------- */
+  .callout {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-card);
+    background: var(--bg-surface-1);
+    max-width: var(--measure);
+  }
+  .callout .icon { color: var(--accent); margin-block-start: 2px; }
+  .callout p { margin: 0; font-size: var(--text-body-sm); line-height: 1.6; color: var(--text-secondary); }
+  .callout strong { color: var(--text-primary); }
+
+  /* ---------- compare --------------------------------------------------- */
+  .compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+  .compare__item {
+    padding: var(--space-4);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-card);
+    background: var(--bg-surface-1);
+  }
+  .compare__head {
+    display: flex; align-items: center; gap: 6px;
+    margin-block-end: var(--space-3);
+    font-size: var(--text-label);
+    font-weight: 700;
+    color: var(--text-secondary);
+  }
+  .compare__head .icon { width: 15px; height: 15px; }
+  .compare__item--do .compare__head .icon { color: var(--status-profit); }
+  .compare__item--dont .compare__head .icon { color: var(--status-loss); }
+  .compare__body { font-size: var(--text-body-sm); line-height: 1.6; color: var(--text-tertiary); }
+  .compare__demo {
+    margin-block-start: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-control);
+    background: var(--bg-surface-2);
+    font-size: var(--text-body-sm);
+    color: var(--text-primary);
+  }
+
+  /* ---------- buttons --------------------------------------------------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--btn-gap);
+    height: var(--btn-h-md);
+    padding-inline: var(--btn-px-md);
+    border: 1px solid transparent;
+    border-radius: var(--btn-radius);
+    font-family: inherit;
+    font-size: var(--btn-font);
+    font-weight: var(--btn-weight);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--dur-base) var(--ease-out),
+                border-color var(--dur-base) var(--ease-out),
+                color var(--dur-base) var(--ease-out),
+                filter var(--dur-base) var(--ease-out);
+  }
+  .btn .icon { width: 16px; height: 16px; }
+  .btn--primary {
+    background-image: var(--btn-primary-bg);
+    background-color: var(--accent);
+    color: var(--btn-primary-fg);
+    box-shadow: var(--glow-accent);
+  }
+  .btn--primary:hover { filter: brightness(1.06); }
+  .btn--secondary { background: var(--bg-surface-2); border-color: var(--border-hairline); color: var(--text-primary); }
+  .btn--secondary:hover { background: var(--bg-surface-3); border-color: var(--border-strong); }
+  .btn--outline { background: transparent; border-color: var(--border-hairline); color: var(--text-primary); }
+  .btn--outline:hover { background: var(--bg-surface-2); border-color: var(--border-strong); }
+  .btn--quiet { background: transparent; color: var(--text-secondary); }
+  .btn--quiet:hover { background: var(--bg-surface-2); color: var(--text-primary); }
+  .btn--danger { background: var(--status-loss-tint); color: var(--status-loss); }
+  .btn--danger:hover { background: color-mix(in srgb, var(--status-loss) 20%, transparent); }
+  .btn--danger-solid { background: var(--btn-danger-solid-bg); color: var(--btn-danger-solid-fg); }
+  .btn--danger-solid:hover { background: var(--btn-danger-solid-bg-hover); }
+  .btn--sm { height: var(--btn-h-sm); padding-inline: var(--btn-px-sm); font-size: var(--btn-font-sm); }
+  .btn--lg { height: var(--btn-h-lg); padding-inline: var(--btn-px-lg); font-size: var(--text-body); }
+  .btn--icon { width: var(--btn-h-md); padding-inline: 0; }
+  .btn--icon.btn--sm { width: var(--btn-h-sm); }
+  .btn[disabled], .btn[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: none;
+  }
+  .btn__spinner {
+    width: 14px; height: 14px;
+    border: 2px solid currentColor;
+    border-block-start-color: transparent;
+    border-radius: 50%;
+    animation: spin 800ms linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- fields ---------------------------------------------------- */
+  .field { display: grid; gap: 6px; max-width: 320px; min-width: 0; }
+  .field__label { font-size: var(--text-caption); font-weight: 500; color: var(--text-secondary); }
+  .control {
+    width: 100%;
+    height: var(--field-h);
+    padding-inline: var(--field-px);
+    border: 1px solid var(--field-border);
+    border-radius: var(--field-radius);
+    background: var(--field-bg);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: var(--field-font);
+    text-align: start;
+    transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), background-color var(--dur-base) var(--ease-out);
+  }
+  .control::placeholder { color: var(--text-tertiary); }
+  .control:hover { background: var(--field-bg-hover); }
+  .control:focus, .control:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--field-ring);
+  }
+  .control:disabled { opacity: 0.5; cursor: not-allowed; }
+  .field__hint { font-size: var(--text-caption); line-height: 1.45; color: var(--text-tertiary); }
+  .field__error {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: var(--text-caption);
+    color: var(--status-loss);
+  }
+  .field__error .icon { width: 14px; height: 14px; }
+  .field--invalid .control,
+  .field--invalid .control:hover { border-color: var(--status-loss); }
+  .field--invalid .control:focus { box-shadow: 0 0 0 3px var(--status-loss-tint); }
+
+  .input-group { position: relative; min-width: 0; }
+  .input-group .control { padding-inline-start: 40px; }
+  .input-group--end .control { padding-inline: var(--field-px) 42px; }
+  .input-group__icon {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 12px;
+    transform: translateY(-50%);
+    color: var(--text-tertiary);
+    pointer-events: none;
+    display: flex;
+  }
+  .input-group__suffix {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: 12px;
+    transform: translateY(-50%);
+    color: var(--text-tertiary);
+    font-size: var(--text-caption);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+  }
+  .select-trigger { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); cursor: pointer; }
+  .select-trigger .icon { color: var(--text-tertiary); }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+  /* ---------- tabs ------------------------------------------------------ */
+  .tabs { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--border-hairline); border-radius: var(--radius-control); background: var(--bg-surface-2); max-width: 100%; overflow-x: auto; }
+  .tabs button {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px;
+    padding-inline: 12px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-tertiary);
+    font: inherit;
+    font-size: var(--text-caption);
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--dur-base) var(--ease-out), background-color var(--dur-base) var(--ease-out);
+  }
+  .tabs button:hover { color: var(--text-primary); background: var(--bg-surface-1); }
+  .tabs button[aria-selected="true"] { color: var(--accent); background: var(--accent-tint); font-weight: 600; }
+  .tabs button .count {
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    padding: 1px 5px;
+    border-radius: var(--radius-pill);
+    background: var(--bg-surface-3);
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  .tab-row { display: inline-flex; align-items: center; gap: 2px; border-block-end: 1px solid var(--border-hairline); max-width: 100%; overflow-x: auto; }
+  .tab-row button {
+    height: 38px;
+    padding-inline: 12px;
+    border: 0;
+    border-block-end: 2px solid transparent;
+    background: transparent;
+    color: var(--text-tertiary);
+    font: inherit;
+    font-size: var(--text-body-sm);
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .tab-row button:hover { color: var(--text-primary); }
+  .tab-row button[aria-selected="true"] { color: var(--accent); border-block-end-color: var(--accent); font-weight: 600; }
+
+  /* ---------- chips ----------------------------------------------------- */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding-inline: 8px;
+    border-radius: var(--radius-xs);
+    font-size: var(--text-label);
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .chip .icon { width: 12px; height: 12px; }
+  .chip--profit { background: var(--status-profit-tint); color: var(--status-profit); }
+  .chip--loss { background: var(--status-loss-tint); color: var(--status-loss); }
+  .chip--warning { background: var(--status-warning-tint); color: var(--status-warning); }
+  .chip--accent { background: var(--accent-tint); color: var(--accent); }
+  .chip--neutral { background: var(--status-neutral-tint); color: var(--text-secondary); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+
+  /* ---------- KPI ------------------------------------------------------- */
+  .kpi {
+    display: grid;
+    gap: 6px;
+    align-content: start;
+    padding: var(--space-4);
+    min-width: 0;
+  }
+  .kpi__label { font-size: var(--kpi-label-size); color: var(--text-tertiary); }
+  .kpi__value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    direction: ltr;
+    unicode-bidi: isolate;
+    font-size: clamp(24px, 3vw, 30px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    color: var(--text-primary);
+  }
+  .kpi__value--profit { color: var(--status-profit); }
+  .kpi__value--loss { color: var(--status-loss); }
+  .kpi__foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .kpi__sub { font-size: var(--text-label); color: var(--text-tertiary); }
+
+  /* ---------- data table specimen -------------------------------------- */
+  .data-table { min-width: 700px; font-size: var(--table-font); background: var(--bg-surface-1); }
+  .data-table th {
+    height: var(--table-head-h);
+    padding-inline: var(--table-cell-px);
+    border-block-end: 1px solid var(--border-hairline);
+    color: var(--table-head-fg);
+    font-size: var(--table-head-font);
+    font-weight: 600;
+    text-align: start;
+    white-space: nowrap;
+    background: var(--bg-surface-1);
+  }
+  .data-table th button {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 0; border: 0; background: transparent;
+    color: inherit; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  .data-table th button:hover { color: var(--text-primary); }
+  .data-table th[aria-sort="descending"] button { color: var(--accent); }
+  .data-table th .icon { width: 12px; height: 12px; opacity: 0.5; }
+  .data-table th[aria-sort="descending"] .icon { opacity: 1; }
+  .data-table td {
+    height: var(--table-row-h);
+    padding-inline: var(--table-cell-px);
+    border-block-end: 1px solid var(--divider);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .data-table tr:last-child td { border-block-end: 0; }
+  .data-table tbody tr:hover td { background: var(--table-row-hover); }
+  .data-table tbody tr.is-selected td { background: var(--accent-tint); }
+  .data-table td .num { font-size: var(--table-num-font); color: var(--text-primary); }
+  .data-table td .num--profit { color: var(--status-profit); font-weight: 600; }
+  .data-table td .num--loss { color: var(--status-loss); font-weight: 600; }
+  .data-table td .num--muted { color: var(--text-tertiary); }
+  .asset { display: inline-flex; align-items: center; gap: 8px; color: var(--text-primary); font-weight: 600; }
+  .asset__mark {
+    width: 22px; height: 22px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: var(--bg-surface-3);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .month-row td {
+    height: 40px;
+    border-block-end: 1px solid var(--divider);
+    background: var(--bg-surface-1);
+  }
+  .month-sep { display: flex; align-items: center; gap: 10px; }
+  .month-sep__line { flex: 1; height: 1px; background: var(--accent-tint-strong); }
+  .month-sep__label { font-size: var(--text-label); font-weight: 700; color: var(--accent); }
+  .month-sep__total { font-size: var(--text-label); color: var(--text-tertiary); }
+  .month-sep__total .num { color: var(--status-profit); font-weight: 600; }
+
+  /* ---------- charts ---------------------------------------------------- */
+  .chart-frame { position: relative; }
+  .chart { display: block; width: 100%; height: auto; }
+  .chart text { font-family: var(--font-sans); font-size: 12px; fill: var(--chart-tick); }
+  .chart .axis-label { font-size: 12px; fill: var(--chart-tick); }
+  .chart-legend {
+    display: flex; flex-wrap: wrap; gap: var(--space-4);
+    margin-block-start: var(--space-3);
+    font-size: var(--text-caption);
+    color: var(--text-secondary);
+  }
+  .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+  .chart-tip {
+    position: absolute;
+    inset-block-start: 10px;
+    inset-inline-end: 10px;
+    display: grid;
+    gap: 3px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-control);
+    background: var(--bg-elevated);
+    box-shadow: var(--elev-2);
+    font-size: var(--text-label);
+    color: var(--text-tertiary);
+    min-width: 118px;
+  }
+  .chart-tip strong { color: var(--text-primary); font-weight: 600; }
+  .chart-tip__row { display: flex; justify-content: space-between; gap: 10px; }
+  .chart-tip__row .num { color: var(--text-primary); }
+
+  /* ---------- overlay specimens ---------------------------------------- */
+  .overlay-stage {
+    position: relative;
+    display: grid;
+    place-items: center;
+    padding: clamp(20px, 4vw, 40px);
+    background-color: color-mix(in srgb, var(--bg-canvas) 82%, var(--scrim));
+    background-image: radial-gradient(circle at 1px 1px, var(--divider) 1px, transparent 0);
+    background-size: 20px 20px;
+    border-radius: 0 0 var(--radius-card) var(--radius-card);
+    overflow: hidden;
+  }
+  .modal {
+    width: min(100%, 400px);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--modal-radius);
+    background: var(--modal-bg);
+    box-shadow: var(--elev-3);
+    overflow: hidden;
+  }
+  .modal__head {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+    padding: 14px var(--space-5);
+    border-block-end: 1px solid var(--border-hairline);
+  }
+  .modal__title { font-size: var(--text-title-sm); font-weight: 600; }
+  .modal__close {
+    width: 30px; height: 30px;
+    display: grid; place-items: center;
+    border: 0; border-radius: var(--radius-xs);
+    background: transparent; color: var(--text-tertiary);
+    cursor: pointer;
+  }
+  .modal__close:hover { background: var(--bg-surface-2); color: var(--text-primary); }
+  .modal__body { display: grid; gap: var(--space-3); padding: var(--space-5); }
+  .modal__foot {
+    display: flex; gap: var(--space-2); justify-content: flex-end;
+    padding: 12px var(--space-5);
+    border-block-start: 1px solid var(--border-hairline);
+    background: var(--bg-surface-1);
+  }
+
+  .toast {
+    display: flex; align-items: center; gap: 10px;
+    max-width: 340px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--toast-radius);
+    background: var(--toast-bg);
+    box-shadow: var(--elev-2);
+    font-size: var(--text-body-sm);
+    color: var(--text-primary);
+  }
+  .toast .icon { color: var(--status-profit); }
+  .toast__action { margin-inline-start: auto; font-size: var(--text-caption); font-weight: 600; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 4px; }
+
+  .skeleton-card { padding: var(--space-4); border: 1px solid var(--border-hairline); border-radius: var(--radius-card); background: var(--bg-surface-1); display: grid; gap: 10px; }
+  .sk {
+    height: 12px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--bg-surface-2), var(--bg-surface-3), var(--bg-surface-2));
+    background-size: 200% 100%;
+    animation: shimmer 1.8s linear infinite;
+  }
+  .sk--title { width: 46%; height: 16px; }
+  .sk--wide { width: 100%; }
+  .sk--mid { width: 72%; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  .empty {
+    display: grid; justify-items: center; text-align: center;
+    gap: 6px;
+    padding: var(--space-8) var(--space-4);
+    border: 1px dashed var(--border-hairline);
+    border-radius: var(--radius-card);
+    background: var(--bg-surface-1);
+  }
+  .empty__icon {
+    width: 48px; height: 48px;
+    display: grid; place-items: center;
+    margin-block-end: 6px;
+    border-radius: 50%;
+    background: var(--bg-surface-2);
+    color: var(--text-tertiary);
+  }
+  .empty h4 { margin: 0; font-size: var(--text-body); font-weight: 600; }
+  .empty p { margin: 0 0 var(--space-3); font-size: var(--text-caption); color: var(--text-tertiary); max-width: 34ch; }
+
+  /* ---------- navigation specimens ------------------------------------- */
+  .nav-demo {
+    width: 100%;
+    max-width: 260px;
+    padding: var(--space-2);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-card);
+    background: var(--bg-surface-1);
+  }
+  .nav-row {
+    display: flex; align-items: center; gap: 10px;
+    height: var(--nav-row-h);
+    padding-inline: 10px;
+    border-radius: var(--nav-radius);
+    font-size: var(--text-body-sm);
+    color: var(--text-secondary);
+    text-decoration: none;
+  }
+  .nav-row .icon { color: var(--text-tertiary); }
+  .nav-row:hover { background: var(--bg-surface-2); color: var(--text-primary); }
+  .nav-row.is-active {
+    background: var(--accent-tint);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .nav-row.is-active .icon { color: var(--accent); }
+  .nav-row__badge {
+    margin-inline-start: auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    padding: 1px 6px;
+    border-radius: var(--radius-pill);
+    background: var(--bg-surface-3);
+    color: var(--text-secondary);
+  }
+
+  .bottomnav {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: center;
+    width: 100%;
+    max-width: 360px;
+    height: 64px;
+    padding-inline: 8px;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-card);
+    background: var(--bg-elevated);
+    box-shadow: var(--elev-2);
+  }
+  .bottomnav__item {
+    display: grid; justify-items: center; gap: 3px;
+    font-size: var(--text-label);
+    color: var(--text-tertiary);
+    text-decoration: none;
+  }
+  .bottomnav__item.is-active { color: var(--accent); }
+  .bottomnav__plus {
+    width: 40px; height: 40px;
+    display: grid; place-items: center;
+    margin-inline: auto;
+    border-radius: var(--radius-control);
+    background-image: var(--gradient-accent);
+    color: var(--accent-ink);
+    box-shadow: var(--glow-accent);
+  }
+
+  /* ---------- RTL examples --------------------------------------------- */
+  .rtl-demo {
+    direction: rtl;
+    padding: var(--space-3);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-control);
+    background: var(--bg-surface-2);
+    font-size: var(--text-body-sm);
+  }
+  .rtl-demo--bad { border-color: color-mix(in srgb, var(--status-loss) 40%, transparent); }
+  .rtl-demo--good { border-color: color-mix(in srgb, var(--status-profit) 40%, transparent); }
+  .mirror-pair { display: flex; gap: var(--space-4); flex-wrap: wrap; }
+  .mirror-cell {
+    display: grid; justify-items: center; gap: 6px;
+    padding: 10px 16px;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-control);
+    background: var(--bg-surface-2);
+    font-size: var(--text-label);
+    color: var(--text-tertiary);
+  }
+  .mirror-cell .icon { color: var(--text-primary); width: 20px; height: 20px; }
+
+  /* ---------- misc layout ---------------------------------------------- */
+  .kbd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-3); }
+  .fact {
+    padding: var(--space-4);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-card);
+    background: var(--bg-surface-1);
+  }
+  .fact__label { font-size: var(--text-label); color: var(--text-tertiary); }
+  .fact__value {
+    margin-block-start: 4px;
+    font-family: var(--font-mono);
+    direction: ltr;
+    unicode-bidi: isolate;
+    font-size: var(--text-title);
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .fact__note { margin-block-start: 4px; font-size: var(--text-caption); color: var(--text-tertiary); line-height: 1.5; }
+
+  .radius-row { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: flex-end; }
+  .radius-item { display: grid; justify-items: center; gap: 8px; }
+  .radius-box {
+    width: 84px; height: 84px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-surface-2);
+  }
+  .radius-item span { font-family: var(--font-mono); font-size: var(--text-label); color: var(--text-tertiary); direction: ltr; }
+
+  .elev-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-4); }
+  .elev-item { display: grid; gap: 8px; }
+  .elev-box {
+    height: 92px;
+    display: grid; place-items: center;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-card);
+    background: var(--bg-surface-1);
+    font-family: var(--font-mono);
+    font-size: var(--text-label);
+    color: var(--text-tertiary);
+  }
+  .elev-box--1 { box-shadow: var(--elev-1); }
+  .elev-box--2 { box-shadow: var(--elev-2); }
+  .elev-box--3 { box-shadow: var(--elev-3); }
+
+  .scale-visual { display: grid; gap: 6px; }
+  .scale-visual div { display: flex; align-items: center; gap: 12px; font-size: var(--text-label); color: var(--text-tertiary); }
+  .scale-visual i { display: block; height: 10px; border-radius: 2px; background: var(--accent-tint-strong); }
+
+  /* ---------- footer ---------------------------------------------------- */
+  .foot {
+    margin-block-start: var(--space-8);
+    padding-block: var(--space-6);
+    border-block-start: 1px solid var(--border-hairline);
+    font-size: var(--text-caption);
+    color: var(--text-tertiary);
+    max-width: var(--measure);
+  }
+  .foot p { font-size: var(--text-caption); color: var(--text-tertiary); margin-block-end: 8px; }
+
+  /* ---------- responsive ------------------------------------------------ */
+  @media (max-width: 1000px) {
+    .shell { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-6); }
+    .toc {
+      position: static;
+      max-height: none;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-block-end: var(--space-2);
+      padding-inline-end: 0;
+      scrollbar-width: none;
+    }
+    .toc::-webkit-scrollbar { display: none; }
+    .toc__title { display: none; }
+    .toc a {
+      white-space: nowrap;
+      padding: 6px 10px;
+      border: 1px solid var(--border-hairline);
+      border-radius: var(--radius-pill);
+      background: var(--bg-surface-1);
+    }
+    .toc a.is-active { border-color: var(--accent); }
+    .toc a span { margin-inline-end: 6px; }
+    .cover__grid { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .compare { grid-template-columns: minmax(0, 1fr); }
+    .toc { margin-inline: -4px; }
+    .stage { padding: var(--space-4); }
+    .modal__foot { flex-wrap: wrap; }
+    .modal__foot .btn { flex: 1; }
+  }
+  @media (max-width: 480px) {
+    .brand__text { display: none; }
+    .topbar { gap: var(--space-2); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+  }
+
+  /* ---------- print ----------------------------------------------------- */
+  @media print {
+    html[data-theme="dark"], html[data-theme="light"], :root {
+      --bg-canvas: #ffffff;
+      --bg-surface-1: #ffffff;
+      --bg-surface-2: #f5f6f8;
+      --bg-surface-3: #eef1f5;
+      --bg-elevated: #ffffff;
+      --bg-overlay: #ffffff;
+      --canvas-glow: none;
+      --border-hairline: #d7dce4;
+      --border-strong: #aab2c0;
+      --divider: #e4e8ee;
+      --text-primary: #111418;
+      --text-secondary: #333a45;
+      --text-tertiary: #4a5361;
+      --accent: #1d4ed8;
+      --accent-tint: #e8eefc;
+      --accent-tint-strong: #dbe6fb;
+      --status-profit: #166534;
+      --status-loss: #b91c1c;
+      --status-warning: #92400e;
+      --chart-tick: #333a45;
+      --chart-grid: #dfe4ea;
+      --elev-1: none;
+      --elev-2: none;
+      --elev-3: none;
+      --glow-accent: none;
+    }
+    .topbar, .toc { display: none !important; }
+    body { background: #fff; }
+    .shell { display: block; padding: 0; max-width: none; }
+    main { max-width: none; }
+    .section { break-before: auto; }
+    h2, h3, h4 { break-after: avoid; }
+    .panel, .table-wrap, .finding, .cover__card, .callout, .compare__item, .fact { break-inside: avoid; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; }
+    .stage { background-image: none; }
+    @page { margin: 18mm 16mm; }
+  }
+</style>
+</head>
+<body>
+
+<svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3H11v16H5.5A2.5 2.5 0 0 0 3 21.5z"/><path d="M21 5.5A2.5 2.5 0 0 0 18.5 3H13v16h5.5a2.5 2.5 0 0 1 2.5 2.5z"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="12" rx="4"/><path d="M12 4v4"/><path d="M8.5 13.5h.01"/><path d="M15.5 13.5h.01"/><path d="M9 17h6"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h6"/></symbol>
+  <symbol id="i-briefcase" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></symbol>
+  <symbol id="i-calc" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h.01M12 19h.01M16 19h.01"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"/><circle cx="17" cy="12" r="2"/><circle cx="13" cy="18" r="2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m20 6-11 11-5-5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></symbol>
+  <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></symbol>
+  <symbol id="i-up-right" viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></symbol>
+  <symbol id="i-down-right" viewBox="0 0 24 24"><path d="M7 7l10 10"/><path d="M17 8v9H8"/></symbol>
+  <symbol id="i-trend-up" viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/></symbol>
+  <symbol id="i-trend-down" viewBox="0 0 24 24"><path d="m3 7 6 6 4-4 8 8"/><path d="M21 15v6h-6"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.5A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.5z"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand__mark" viewBox="0 0 48 48" aria-hidden="true">
+      <defs>
+        <linearGradient id="bm-bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1c1d22"/><stop offset="100%" stop-color="#0b0b0e"/>
+        </linearGradient>
+        <linearGradient id="bm-line" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0%" stop-color="#2563eb"/><stop offset="55%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#22d3ee"/>
+        </linearGradient>
+      </defs>
+      <rect width="48" height="48" rx="12" fill="url(#bm-bg)"/>
+      <path d="M12 34 L22 24 L26 28 L36 16" fill="none" stroke="url(#bm-line)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="36" cy="16" r="5.5" fill="none" stroke="#38bdf8" stroke-opacity="0.35" stroke-width="1.5"/>
+    </svg>
+    <div class="brand__text">
+      <div class="brand__name">TradeOS Design System</div>
+      <div class="brand__sub">v1.0 · audited v2.3.1</div>
+    </div>
+  </div>
+  <div class="topbar__spacer"></div>
+  <div class="theme-switch" role="group" aria-label="Theme">
+    <button type="button" data-theme-set="dark" aria-pressed="true">
+      <svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg> Dark
+    </button>
+    <button type="button" data-theme-set="light" aria-pressed="false">
+      <svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg> Light
+    </button>
+  </div>
+</header>
+
+<div class="shell">
+
+  <nav class="toc" aria-label="Contents">
+    <p class="toc__title">Contents</p>
+    <a href="#principles"><span>01</span>Principles</a>
+    <a href="#audit"><span>02</span>What exists today</a>
+    <a href="#system"><span>03</span>The proposed system</a>
+    <a href="#components"><span>04</span>Components</a>
+    <a href="#rtl"><span>05</span>RTL &amp; numerals</a>
+    <a href="#accessibility"><span>06</span>Accessibility</a>
+    <a href="#migration"><span>07</span>Migration map</a>
+    <a href="#tokens"><span>08</span>Token reference</a>
+  </nav>
+
+  <main>
+
+    <!-- ============================ COVER ============================ -->
+    <div class="cover">
+      <p class="eyebrow">Design system · proposal</p>
+      <h1>One interface language for a Hebrew trading terminal.</h1>
+      <p class="cover__lede">
+        An audit of TradeOS as it exists today, and a token-driven system that keeps what already
+        works — the true-black canvas, the electric-blue accent, the tabular numbers — while removing
+        the drift. Dark first, RTL native.
+      </p>
+      <div class="meta-row">
+        <span class="meta"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg> Audited at v2.3.1 · 3a70c50</span>
+        <span class="meta">2 themes · 1 accent · 1 typeface family</span>
+        <span class="meta">Read-only audit — no product code changed</span>
+      </div>
+
+      <div class="cover__grid">
+        <div class="cover__card">
+          <svg class="icon icon--lg" aria-hidden="true"><use href="#i-search"/></svg>
+          <div class="cover__card-title">The audit</div>
+          <p>What the shipped CSS and components actually say — tokens, type sizes, radii, shadows and the patterns that repeat.</p>
+        </div>
+        <div class="cover__card">
+          <svg class="icon icon--lg" aria-hidden="true"><use href="#i-grid"/></svg>
+          <div class="cover__card-title">The system</div>
+          <p>Three token layers, a 12px type floor, one radius per role, and focus and contrast values that are measured, not guessed.</p>
+        </div>
+        <div class="cover__card">
+          <svg class="icon icon--lg" aria-hidden="true"><use href="#i-external"/></svg>
+          <div class="cover__card-title">The migration</div>
+          <p>A one-to-one map from today's class names to the new tokens, ordered so nothing breaks while the old names still resolve.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================= PRINCIPLES ========================= -->
+    <section class="section" id="principles">
+      <div class="section__head">
+        <p class="eyebrow">01 · Principles</p>
+        <h2>Five rules that settle most decisions</h2>
+        <p class="lede">
+          These are the judgement calls the system exists to remove. When two options look equally
+          plausible, one of these rules breaks the tie.
+        </p>
+      </div>
+
+      <div class="findings">
+        <div class="finding">
+          <span class="finding__n">01</span>
+          <div>
+            <h3 class="finding__title">One accent, one meaning</h3>
+            <p>Blue means action, selection or focus. It never decorates a static surface. Profit, loss and breakeven are data colours and never become UI chrome.</p>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="finding__n">02</span>
+          <div>
+            <h3 class="finding__title">Edges before shadows</h3>
+            <p>Depth comes from a hairline border plus one inset highlight. Shadows never grow or move on hover — they repaint neighbours and read as layout shift.</p>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="finding__n">03</span>
+          <div>
+            <h3 class="finding__title">Numbers are data, not text</h3>
+            <p>Every figure is tabular and isolated as a left-to-right run, so the minus and the shekel sign stay where they belong inside a right-to-left page.</p>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="finding__n">04</span>
+          <div>
+            <h3 class="finding__title">RTL is structural</h3>
+            <p>Layout uses logical properties. Only direction-bearing icons mirror. Nothing is positioned with a physical left or right offset.</p>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="finding__n">05</span>
+          <div>
+            <h3 class="finding__title">One surface, one radius</h3>
+            <p>A card is 14px everywhere. A control is 10px everywhere. A page panel is 20px everywhere. Role decides the value, not the page's age.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================== AUDIT ============================ -->
+    <section class="section" id="audit">
+      <div class="section__head">
+        <p class="eyebrow">02 · Audit</p>
+        <h2>What the interface says today</h2>
+        <p class="lede">
+          Read from <code>src/index.css</code>, the shared primitives and representative screens at
+          v2.3.1. The foundation is genuinely good — this section is about where it has already drifted,
+          with counts where a count makes the point.
+        </p>
+      </div>
+
+      <h3>2.1 Colour</h3>
+      <p>
+        The palette is defined once, in a Tailwind v4 <code>@theme</code> block, with a second block
+        overriding it for light mode. That is the right shape. The values themselves are mostly right
+        too: a true black canvas, three translucent surface tiers, hairline borders and one blue.
+      </p>
+      <div class="swatches">
+        <div class="swatch">
+          <div class="swatch__chip" style="background:#000000;"></div>
+          <div class="swatch__body"><div class="swatch__name">canvas</div><span class="swatch__val">#000000</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:rgba(255,255,255,.05);"></div>
+          <div class="swatch__body"><div class="swatch__name">surface 1</div><span class="swatch__val">white 5%</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:rgba(255,255,255,.03);"></div>
+          <div class="swatch__body"><div class="swatch__name">surface 2</div><span class="swatch__val">white 3%</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--line" style="background:#0b0b0b; --swatch:rgba(255,255,255,.08);"></div>
+          <div class="swatch__body"><div class="swatch__name">border</div><span class="swatch__val">white 8%</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#000; color:#f0f0f0;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">text primary</div><span class="swatch__val">#f0f0f0</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#000; color:#a0a0b0;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">text secondary</div><span class="swatch__val">#a0a0b0</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#000; color:#80808f;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">text muted</div><span class="swatch__val">#80808f</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#000; color:#3b82f6;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">accent</div><span class="swatch__val">#3b82f6</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:linear-gradient(135deg,#2563eb,#38bdf8);"></div>
+          <div class="swatch__body"><div class="swatch__name">accent gradient</div><span class="swatch__val">#2563eb → #38bdf8</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:#22c55e;"></div>
+          <div class="swatch__body"><div class="swatch__name">profit</div><span class="swatch__val">#22c55e</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:#ef4444;"></div>
+          <div class="swatch__body"><div class="swatch__name">loss</div><span class="swatch__val">#ef4444</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:#f59e0b;"></div>
+          <div class="swatch__body"><div class="swatch__name">breakeven</div><span class="swatch__val">#f59e0b</span></div>
+        </div>
+      </div>
+
+      <div class="callout mt-4">
+        <svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>
+        <p>
+          <strong>The gradient's label only works on half of it.</strong> The button ink
+          <span class="mono">#03121f</span> measures 8.8:1 on the sky stop but 3.7:1 on the blue stop,
+          so the primary action reads comfortably on its bright end and thin on its dark end. The new
+          system moves the dark stop to <span class="mono">#3b82f6</span> (5.1:1) instead of navy.
+        </p>
+      </div>
+
+      <p class="mt-4">
+        Light mode is a second palette rather than an inversion, which is correct, but two leftovers
+        still point at the palette before the blue rebrand: a violet page glow
+        (<span class="mono">rgba(139,92,246,…)</span>) behind the light canvas, and a datepicker still
+        keyed to <span class="mono">rgba(2,132,199,…)</span> — a cyan that no token in the theme uses.
+      </p>
+
+      <h3>2.2 Typography</h3>
+      <p>
+        Heebo carries Hebrew and Latin; Inter is installed but the stack puts Heebo first, so Latin
+        renders in Heebo as well. The problem is not the family — it is that sizes are hand-written at
+        the call site.
+      </p>
+      <div class="table-wrap">
+        <table class="token-table">
+          <thead>
+            <tr><th>Observed size</th><th>Occurrences</th><th>Where it is used</th><th>Verdict</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="mono">8px</span></td><td><span class="num">12</span></td><td>“New” and “LIVE” badges</td><td><span class="fail">Below readable</span></td></tr>
+            <tr><td><span class="mono">9px</span></td><td><span class="num">53</span></td><td>Badge and micro-label variants</td><td><span class="fail">Below readable</span></td></tr>
+            <tr><td><span class="mono">10px</span></td><td><span class="num">301</span></td><td>Table metadata, KPI labels, chips</td><td><span class="fail">Too small by default</span></td></tr>
+            <tr><td><span class="mono">11px</span></td><td><span class="num">340</span></td><td>Secondary metadata, mobile rows</td><td>Accepts 12px floor</td></tr>
+            <tr><td><span class="mono">13px / 13.5px</span></td><td><span class="num">53</span></td><td>Dense table and button labels</td><td>Keep as dense step</td></tr>
+            <tr><td><span class="mono">15px</span></td><td><span class="num">27</span></td><td>Panel headings</td><td>Collapses into 16</td></tr>
+            <tr><td><span class="mono">28–44px</span></td><td><span class="num">9</span></td><td>Hero and KPI numerals</td><td>Keep, tokenised</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="spec-note">
+        820 hard-coded pixel font sizes in JSX. The most common size in the product is smaller than
+        the smallest comfortable reading size on a phone.
+      </p>
+
+      <h3>2.3 Shape, shadow and space</h3>
+      <div class="fact-grid kbd-grid">
+        <div class="fact">
+          <div class="fact__label">Radii in JSX</div>
+          <div class="fact__value">lg 492 · xl 406 · 2xl 159</div>
+          <div class="fact__note">Three different radii for the same “card / control” role, chosen per page.</div>
+        </div>
+        <div class="fact">
+          <div class="fact__label">Card shadow</div>
+          <div class="fact__value">8px 32px / .25</div>
+          <div class="fact__note">One soft drop plus a 1px white inset line — the right recipe, repeated in three places.</div>
+        </div>
+        <div class="fact">
+          <div class="fact__label">Spacing base</div>
+          <div class="fact__value">4px</div>
+          <div class="fact__note">Tailwind's scale is used consistently; what is missing is component padding tokens.</div>
+        </div>
+      </div>
+      <p class="mt-4">
+        Card padding runs from 12 to 24px depending on the page, and the same “compact row” is written
+        as <code>py-2</code>, <code>py-2.5</code> and <code>py-3</code> in different tables. These are
+        not wrong on their own; together they make two screens feel like two products.
+      </p>
+
+      <h3>2.4 Component patterns</h3>
+      <div class="table-wrap">
+        <table class="token-table">
+          <thead>
+            <tr><th>Primitive</th><th>Current definition</th><th>What is missing</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Button</td><td>4 variants, 2 sizes, 12px radius, 700 weight</td><td>No focus-visible ring, no large size, danger-solid undefined</td></tr>
+            <tr><td>Card</td><td>Glass fill, hairline border, 12px radius, optional glow/spotlight</td><td>Home overrides it to 16px; no elevation token</td></tr>
+            <tr><td>Stat tile</td><td>Label + tabular number + delta chip</td><td>10–11px labels; no shared KPI container</td></tr>
+            <tr><td>Tabs</td><td>Pill, segmented and underline, 9–14px labels</td><td>Three heights and three label sizes</td></tr>
+            <tr><td>Table</td><td>Dense 12–13 column layout, 10–13px text</td><td>No shared row, header or numeric-cell spec</td></tr>
+            <tr><td>Input</td><td>Copy-pasted class string per form</td><td>No shared field, error or focus treatment</td></tr>
+            <tr><td>Charts</td><td>Tokenised ticks and tooltips, ad-hoc series colours</td><td>Categorical palette undefined; 4px bar radius only</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2.5 Findings</h3>
+      <div class="findings">
+        <div class="finding">
+          <span class="finding__n">01</span>
+          <div>
+            <h4 class="finding__title">The accent is half-migrated</h4>
+            <p>Comments still describe a violet→cyan gradient; the gradient is blue→cyan; violet survives in the light page glow, the sidebar's active wash and the logo mark. Three different “brand” stories coexist.</p>
+            <div class="finding__evidence">index.css · .light body, Sidebar ActiveBar, BrandMark</div>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="finding__n">02</span>
+          <div>
+            <h4 class="finding__title">The smallest type is the most common</h4>
+            <p>10–11px accounts for 641 occurrences; 8–9px adds 65 more. On a 390px phone those labels are half the comfortable reading size.</p>
+            <div class="finding__evidence">text-[10px] 301 · text-[11px] 340 · text-[9px] 53 · text-[8px] 12</div>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="finding__n">03</span>
+          <div>
+            <h4 class="finding__title">Shape has no owner</h4>
+            <p>Cards use 12px on one page and 16px on another; inputs use 8px; buttons use 12px; pills use full. The radius carries no meaning.</p>
+            <div class="finding__evidence">rounded-lg 492 · rounded-xl 406 · rounded-2xl 159 · rounded-full 327</div>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="finding__n">04</span>
+          <div>
+            <h4 class="finding__title">Focus is a border, not a ring</h4>
+            <p>Fields change border colour on focus with no offset ring, and buttons define no focus-visible state at all. Keyboard users get a 1px hue shift on a dark surface.</p>
+            <div class="finding__evidence">focus:border-accent-primary · Button.jsx has no focus styles</div>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="finding__n">05</span>
+          <div>
+            <h4 class="finding__title">Light mode inherits dead colours</h4>
+            <p>The light theme overrides accents and status colours correctly, but the datepicker and page glow still reference pre-rebrand cyan and violet values that are not in the token set.</p>
+            <div class="finding__evidence">rgba(2,132,199,…) · rgba(139,92,246,…)</div>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="finding__n">06</span>
+          <div>
+            <h4 class="finding__title">Status is colour-first</h4>
+            <p>Badges do pair a tint with text, so meaning is not lost — but the label is 9–10px, which falls below the reading floor, so at a glance the tint alone is doing the work. Direction and live state need an icon, and every badge needs a 12px label.</p>
+            <div class="finding__evidence">statusBadge() in TradeTable.jsx</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================== SYSTEM =========================== -->
+    <section class="section" id="system">
+      <div class="section__head">
+        <p class="eyebrow">03 · The proposed system</p>
+        <h2>Tokens in three layers</h2>
+        <p class="lede">
+          Primitives hold raw values, semantic tokens give them a meaning, and component tokens give
+          controls a default. A component never reads a primitive directly — that is what keeps a
+          theme switch to one block of overrides.
+        </p>
+      </div>
+
+      <div class="cols cols--3">
+        <div class="fact">
+          <div class="fact__label">Layer 1 · Primitive</div>
+          <div class="fact__value">31 values</div>
+          <div class="fact__note">Neutrals, blue ramp, status hues, categorical hues. Named by value, never by use.</div>
+        </div>
+        <div class="fact">
+          <div class="fact__label">Layer 2 · Semantic</div>
+          <div class="fact__value">47 tokens</div>
+          <div class="fact__note">Canvas, surfaces, borders, text, accent, status, chart chrome, focus. Same names in both themes.</div>
+        </div>
+        <div class="fact">
+          <div class="fact__label">Layer 3 · Component</div>
+          <div class="fact__value">7 groups</div>
+          <div class="fact__note">Button, field, card, table, KPI, nav, overlay, plus type / space / shape / motion scales.</div>
+        </div>
+      </div>
+
+      <h3 id="system-color">3.1 Colour</h3>
+      <p>
+        The accent stays electric blue, but the gradient's dark stop moves from navy to the accent
+        itself so a dark label passes AA at both ends. Status colours are split into a text value and a
+        tint, instead of one hue doing both jobs.
+      </p>
+      <h4>Dark — default</h4>
+      <div class="swatches">
+        <div class="swatch">
+          <div class="swatch__chip" style="background:#000; border:1px solid var(--border-hairline);"></div>
+          <div class="swatch__body"><div class="swatch__name">canvas</div><span class="swatch__val">#000000</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:rgba(255,255,255,.045);"></div>
+          <div class="swatch__body"><div class="swatch__name">surface 1</div><span class="swatch__val">white 4.5%</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:rgba(255,255,255,.07);"></div>
+          <div class="swatch__body"><div class="swatch__name">surface 2</div><span class="swatch__val">white 7%</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:rgba(255,255,255,.10);"></div>
+          <div class="swatch__body"><div class="swatch__name">surface 3</div><span class="swatch__val">white 10%</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#000; color:#f2f4f7;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">text primary</div><span class="swatch__val">#f2f4f7</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#000; color:#aab2c0;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">text secondary</div><span class="swatch__val">#aab2c0</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#000; color:#8a92a2;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">text tertiary</div><span class="swatch__val">#8a92a2</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#000; color:#3b82f6;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">accent</div><span class="swatch__val">#3b82f6</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:linear-gradient(135deg,#38bdf8,#3b82f6); color:#04121f; font-weight:700;">שמור</div>
+          <div class="swatch__body"><div class="swatch__name">accent gradient</div><span class="swatch__val">#38bdf8 → #3b82f6</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#000; color:#22c55e;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">profit</div><span class="swatch__val">#22c55e</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#000; color:#ef4444;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">loss</div><span class="swatch__val">#ef4444</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#000; color:#f59e0b;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">warning</div><span class="swatch__val">#f59e0b</span></div>
+        </div>
+      </div>
+
+      <h4>Light</h4>
+      <div class="swatches">
+        <div class="swatch">
+          <div class="swatch__chip" style="background:#f3f5f9;"></div>
+          <div class="swatch__body"><div class="swatch__name">canvas</div><span class="swatch__val">#f3f5f9</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:rgba(255,255,255,.72);"></div>
+          <div class="swatch__body"><div class="swatch__name">surface 1</div><span class="swatch__val">white 72%</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip" style="background:#fff;"></div>
+          <div class="swatch__body"><div class="swatch__name">surface 3</div><span class="swatch__val">#ffffff</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#fff; color:#0e1116;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">text primary</div><span class="swatch__val">#0e1116</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#fff; color:#414a58;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">text secondary</div><span class="swatch__val">#414a58</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#fff; color:#5c6675;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">text tertiary</div><span class="swatch__val">#5c6675</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#fff; color:#1d4ed8;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">accent</div><span class="swatch__val">#1d4ed8</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#fff; color:#166534;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">profit</div><span class="swatch__val">#166534</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#fff; color:#b91c1c;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">loss</div><span class="swatch__val">#b91c1c</span></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch__chip swatch__chip--text" style="background:#fff; color:#92400e;">אבג Aa</div>
+          <div class="swatch__body"><div class="swatch__name">warning</div><span class="swatch__val">#92400e</span></div>
+        </div>
+      </div>
+
+      <h4>Measured contrast</h4>
+      <p class="small">
+        Ratios are computed from the sRGB values in <code>tokens.css</code> against the canvas and a
+        card surface. 4.5:1 is the body-text floor; 3:1 covers large text, icons and graphics.
+      </p>
+      <div class="table-wrap">
+        <table class="token-table">
+          <thead>
+            <tr><th>Pair</th><th>Dark</th><th>Light</th><th>Target</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>text primary / canvas</td><td><span class="num">19.06</span> : 1</td><td><span class="num">17.33</span> : 1</td><td><span class="pass">AA</span></td></tr>
+            <tr><td>text secondary / canvas</td><td><span class="num">9.84</span> : 1</td><td><span class="num">8.20</span> : 1</td><td><span class="pass">AA</span></td></tr>
+            <tr><td>text tertiary / card</td><td><span class="num">5.99</span> : 1</td><td><span class="num">5.67</span> : 1</td><td><span class="pass">AA</span></td></tr>
+            <tr><td>accent text / card</td><td><span class="num">5.09</span> : 1</td><td><span class="num">6.54</span> : 1</td><td><span class="pass">AA</span></td></tr>
+            <tr><td>profit text / card</td><td><span class="num">8.22</span> : 1</td><td><span class="num">6.95</span> : 1</td><td><span class="pass">AA</span></td></tr>
+            <tr><td>loss text / card</td><td><span class="num">4.98</span> : 1</td><td><span class="num">6.31</span> : 1</td><td><span class="pass">AA</span></td></tr>
+            <tr><td>warning text / card</td><td><span class="num">8.72</span> : 1</td><td><span class="num">6.92</span> : 1</td><td><span class="pass">AA</span></td></tr>
+            <tr><td>primary label / gradient</td><td><span class="num">5.14</span> – <span class="num">8.82</span> : 1</td><td><span class="num">5.14</span> – <span class="num">8.82</span> : 1</td><td><span class="pass">AA</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="system-type">3.2 Typography</h3>
+      <p>
+        One family, one scale, a 12px floor. 16px is the default reading size, 14px is the dense-data
+        step for tables, and 32px is the KPI numeral. Numerals are always tabular and isolated.
+      </p>
+      <div class="panel">
+        <div class="panel__head">
+          <span class="panel__title">Type scale</span>
+          <span class="panel__meta">1.25 ratio, rounded to whole pixels</span>
+        </div>
+        <div class="stage--pad" style="padding:var(--space-5);">
+          <div class="stack" style="gap:14px;">
+            <div class="row" style="align-items:baseline; gap:16px;">
+              <span class="mini-label" style="width:64px; flex:none;">44 / 800</span>
+              <span style="font-size:44px; font-weight:800; letter-spacing:-0.03em; line-height:1.05;">12,480</span>
+              <span class="muted small">Display — hero numerals only</span>
+            </div>
+            <div class="row" style="align-items:baseline; gap:16px;">
+              <span class="mini-label" style="width:64px; flex:none;">32 / 800</span>
+              <span style="font-size:32px; font-weight:800; letter-spacing:-0.03em; line-height:1.1;">₪12,480</span>
+              <span class="muted small">Display — KPI value</span>
+            </div>
+            <div class="row" style="align-items:baseline; gap:16px;">
+              <span class="mini-label" style="width:64px; flex:none;">28 / 800</span>
+              <span style="font-size:28px; font-weight:800; letter-spacing:-0.025em; line-height:1.15;">סקירה כללית</span>
+              <span class="muted small">Page title</span>
+            </div>
+            <div class="row" style="align-items:baseline; gap:16px;">
+              <span class="mini-label" style="width:64px; flex:none;">24 / 700</span>
+              <span style="font-size:24px; font-weight:700; letter-spacing:-0.02em; line-height:1.2;">ביצועי החודש</span>
+              <span class="muted small">Section title</span>
+            </div>
+            <div class="row" style="align-items:baseline; gap:16px;">
+              <span class="mini-label" style="width:64px; flex:none;">20 / 700</span>
+              <span style="font-size:20px; font-weight:700; letter-spacing:-0.015em;">פירוט עסקאות</span>
+              <span class="muted small">Card title, desktop</span>
+            </div>
+            <div class="row" style="align-items:baseline; gap:16px;">
+              <span class="mini-label" style="width:64px; flex:none;">18 / 600</span>
+              <span style="font-size:18px; font-weight:600;">מגמה שבועית</span>
+              <span class="muted small">Card title, compact</span>
+            </div>
+            <div class="row" style="align-items:baseline; gap:16px;">
+              <span class="mini-label" style="width:64px; flex:none;">17 / 400</span>
+              <span style="font-size:17px; line-height:1.6; color:var(--text-secondary);">הרווח הנקי החודשי עלה ב־8.4% לעומת החודש שעבר.</span>
+              <span class="muted small">Lede</span>
+            </div>
+            <div class="row" style="align-items:baseline; gap:16px;">
+              <span class="mini-label" style="width:64px; flex:none;">16 / 400</span>
+              <span style="font-size:16px; line-height:1.6;">הוסף עסקה חדשה כדי להתחיל לעקוב אחרי הביצועים שלך.</span>
+              <span class="muted small">Body</span>
+            </div>
+            <div class="row" style="align-items:baseline; gap:16px;">
+              <span class="mini-label" style="width:64px; flex:none;">14 / 400</span>
+              <span style="font-size:14px; line-height:1.5;">BTC/USDT · לונג · 10/11/2026</span>
+              <span class="muted small">Dense table</span>
+            </div>
+            <div class="row" style="align-items:baseline; gap:16px;">
+              <span class="mini-label" style="width:64px; flex:none;">13 / 500</span>
+              <span style="font-size:13px; font-weight:500; color:var(--text-secondary);">נדרש אימות דו-שלבי</span>
+              <span class="muted small">Helper text</span>
+            </div>
+            <div class="row" style="align-items:baseline; gap:16px;">
+              <span class="mini-label" style="width:64px; flex:none;">12 / 600</span>
+              <span style="font-size:12px; font-weight:600; letter-spacing:0.02em; color:var(--text-tertiary);">פתוחה · ממתין · סגורה</span>
+              <span class="muted small">Label floor — never smaller</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        Reading measure is 68 characters. Negative tracking is reserved for 24px and above; body text
+        keeps normal tracking so Hebrew letterforms do not collide.
+      </p>
+
+      <h3 id="system-space">3.3 Space and density</h3>
+      <p>
+        The 4px grid stays. What changes is that component padding becomes a token: a card is 20px, a
+        compact card 16px, a table row 44px, and a page section 56–64px. Density is a property of the
+        component, not a decision made per screen.
+      </p>
+      <div class="panel">
+        <div class="panel__head">
+          <span class="panel__title">Spacing scale</span>
+          <span class="panel__meta">2 / 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 / 64</span>
+        </div>
+        <div class="stage--pad" style="padding:var(--space-5);">
+          <div class="scale-visual">
+            <div><i style="width:2px;"></i><span class="num">2</span></div>
+            <div><i style="width:4px;"></i><span class="num">4</span></div>
+            <div><i style="width:8px;"></i><span class="num">8</span></div>
+            <div><i style="width:12px;"></i><span class="num">12</span></div>
+            <div><i style="width:16px;"></i><span class="num">16</span></div>
+            <div><i style="width:20px;"></i><span class="num">20</span></div>
+            <div><i style="width:24px;"></i><span class="num">24</span></div>
+            <div><i style="width:32px;"></i><span class="num">32</span></div>
+            <div><i style="width:40px;"></i><span class="num">40</span></div>
+            <div><i style="width:48px;"></i><span class="num">48</span></div>
+            <div><i style="width:64px;"></i><span class="num">64</span></div>
+          </div>
+        </div>
+      </div>
+
+      <h3 id="system-shape">3.4 Shape and elevation</h3>
+      <div class="cols">
+        <div class="panel">
+          <div class="panel__head"><span class="panel__title">Radius by role</span></div>
+          <div class="stage--pad" style="padding:var(--space-5);">
+            <div class="radius-row">
+              <div class="radius-item"><div class="radius-box" style="border-radius:6px;"></div><span>6 · chip</span></div>
+              <div class="radius-item"><div class="radius-box" style="border-radius:10px;"></div><span>10 · control</span></div>
+              <div class="radius-item"><div class="radius-box" style="border-radius:14px;"></div><span>14 · card</span></div>
+              <div class="radius-item"><div class="radius-box" style="border-radius:20px;"></div><span>20 · panel</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel__head"><span class="panel__title">Elevation by layer</span></div>
+          <div class="stage--pad" style="padding:var(--space-5);">
+            <div class="elev-row">
+              <div class="elev-item"><div class="elev-box elev-box--1">card</div></div>
+              <div class="elev-item"><div class="elev-box elev-box--2">overlay</div></div>
+              <div class="elev-item"><div class="elev-box elev-box--3">modal</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        Hover never changes the shadow. It changes the border and the fill, which cannot paint outside
+        the element's own box.
+      </p>
+
+      <h3 id="system-motion">3.5 Motion</h3>
+      <p>
+        Motion explains a state change, never decorates one. Entrances ease out, exits run at roughly
+        62% of the entrance and ease in, and list items stagger by 40ms.
+      </p>
+      <div class="table-wrap">
+        <table class="token-table">
+          <thead><tr><th>Token</th><th>Value</th><th>Used for</th></tr></thead>
+          <tbody>
+            <tr><td>quick</td><td><span class="mono">120ms</span></td><td>Hover, press, colour and border transitions</td></tr>
+            <tr><td>base</td><td><span class="mono">180ms</span></td><td>Control and tab state changes</td></tr>
+            <tr><td>moderate</td><td><span class="mono">240ms</span></td><td>Dropdowns, popovers, inline reveals</td></tr>
+            <tr><td>large</td><td><span class="mono">320ms</span></td><td>Modals and page-level transitions</td></tr>
+            <tr><td>stagger</td><td><span class="mono">40ms</span></td><td>Card and row lists on first paint</td></tr>
+            <tr><td>easing</td><td><span class="mono">cubic-bezier(.2,.7,.3,1)</span></td><td>Enter — out; exits use the inverted curve</td></tr>
+            <tr><td>reduced motion</td><td><span class="mono">1ms</span></td><td>Every duration collapses when the OS asks</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ========================= COMPONENTS ========================= -->
+    <section class="section" id="components">
+      <div class="section__head">
+        <p class="eyebrow">04 · Components</p>
+        <h2>The parts, with real states</h2>
+        <p class="lede">
+          Every specimen below is live HTML rendered with the tokens — not a screenshot. Specimens use
+          Hebrew copy inside an RTL frame, because a component that only looks right in English is not
+          finished.
+        </p>
+      </div>
+
+      <h3 id="cmp-buttons">4.1 Buttons</h3>
+      <p>
+        Six variants and three sizes. The primary is the only gradient surface in the product; the
+        label is dark ink on both gradient stops. Every button gets a visible focus ring and a 44px
+        default height.
+      </p>
+      <div class="panel">
+        <div class="panel__head">
+          <span class="panel__title">Variants</span>
+          <span class="panel__meta">height 44 · radius 10 · 600 weight</span>
+        </div>
+        <div class="stage" dir="rtl" lang="he">
+          <div class="row">
+            <button class="btn btn--primary" type="button">שמור עסקה</button>
+            <button class="btn btn--secondary" type="button">ייצוא</button>
+            <button class="btn btn--outline" type="button">סינון</button>
+            <button class="btn btn--quiet" type="button">ביטול</button>
+            <button class="btn btn--danger" type="button">מחק</button>
+            <button class="btn btn--danger-solid" type="button">מחק לצמיתות</button>
+          </div>
+          <div class="row mt-6">
+            <button class="btn btn--primary btn--sm" type="button">שמור</button>
+            <button class="btn btn--secondary btn--sm" type="button">עריכה</button>
+            <button class="btn btn--primary btn--lg" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
+              עסקה חדשה
+            </button>
+            <button class="btn btn--outline btn--icon" type="button" aria-label="סינון">
+              <svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg>
+            </button>
+            <button class="btn btn--quiet btn--icon" type="button" aria-label="אפשרויות">
+              <svg class="icon" aria-hidden="true"><use href="#i-more"/></svg>
+            </button>
+          </div>
+          <div class="row mt-6">
+            <button class="btn btn--primary" type="button" aria-disabled="true">
+              <span class="btn__spinner" aria-hidden="true"></span> שומר…
+            </button>
+            <button class="btn btn--primary" type="button" disabled>לא זמין</button>
+            <button class="btn btn--secondary" type="button" disabled>לא זמין</button>
+          </div>
+        </div>
+      </div>
+      <ul class="mt-4">
+        <li><strong>Primary</strong> — one per view. Gradient <code>#38bdf8 → #3b82f6</code>, ink <code>#04121f</code>.</li>
+        <li><strong>Secondary</strong> — the default action in a card toolbar; surface fill, hairline border.</li>
+        <li><strong>Outline / quiet</strong> — low-emphasis actions. Quiet has no resting border.</li>
+        <li><strong>Danger</strong> — tint for inline destructive actions; solid only for the final confirm.</li>
+        <li>Loading keeps the label and adds a spinner; disabled drops to 45% and keeps its shape.</li>
+      </ul>
+
+      <h3 id="cmp-fields">4.2 Fields</h3>
+      <div class="panel">
+        <div class="panel__head">
+          <span class="panel__title">Field states</span>
+          <span class="panel__meta">height 44 · 16px · radius 10</span>
+        </div>
+        <div class="stage" dir="rtl" lang="he">
+          <div class="cols">
+            <div class="field">
+              <label class="field__label" for="f-name">שם היומן</label>
+              <input class="control" id="f-name" type="text" value="יומן ראשי">
+              <span class="field__hint">יוצג בראש עמוד היומן.</span>
+            </div>
+            <div class="field">
+              <label class="field__label" for="f-search">חיפוש נכס</label>
+              <div class="input-group">
+                <span class="input-group__icon"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></span>
+                <input class="control" id="f-search" type="search" placeholder="סימול, למשל BTC/USDT">
+              </div>
+            </div>
+            <div class="field">
+              <label class="field__label" for="f-size">גובה הפוזיציה</label>
+              <div class="input-group input-group--end">
+                <input class="control num" id="f-size" type="text" value="1,240" style="text-align:right;">
+                <span class="input-group__suffix">₪</span>
+              </div>
+              <span class="field__hint">0.8% מהיתרה.</span>
+            </div>
+            <div class="field">
+              <label class="field__label" for="f-asset">סוג נכס</label>
+              <button class="control select-trigger" id="f-asset" type="button" aria-haspopup="listbox">
+                <span>קריפטו</span>
+                <svg class="icon" aria-hidden="true"><use href="#i-chev-d"/></svg>
+              </button>
+            </div>
+            <div class="field field--invalid">
+              <label class="field__label" for="f-pass">סיסמה</label>
+              <input class="control" id="f-pass" type="password" value="1234" aria-invalid="true" aria-describedby="f-pass-err">
+              <span class="field__error" id="f-pass-err">
+                <svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>
+                חייבת לפחות 8 תווים, כולל ספרה.
+              </span>
+            </div>
+            <div class="field">
+              <label class="field__label" for="f-date">תאריך כניסה</label>
+              <div class="input-group input-group--end">
+                <input class="control num" id="f-date" type="text" value="2026-11-10" style="text-align:right;">
+                <span class="input-group__suffix"><svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg></span>
+              </div>
+            </div>
+            <div class="field">
+              <label class="field__label" for="f-off">שדה לא זמין</label>
+              <input class="control" id="f-off" type="text" value="נקבע אוטומטית" disabled>
+            </div>
+            <div class="field">
+              <label class="field__label" for="f-num">נקודות כניסה</label>
+              <input class="control num" id="f-num" type="number" value="3">
+              <span class="field__hint">שלוש כניסות מדורגות.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="mt-4">
+        <li>Labels sit above the control at 13px; hints and errors at 13px, never 10.</li>
+        <li>Focus is a 2px accent border plus a 3px tint ring, so it survives a light or dark background.</li>
+        <li>Errors pair the loss colour with an icon and a sentence — colour is never the only signal.</li>
+        <li>Fields are 16px so iOS does not zoom on focus; numeric fields keep the tabular face.</li>
+      </ul>
+
+      <h3 id="cmp-cards">4.3 Cards and KPI tiles</h3>
+      <div class="panel">
+        <div class="panel__head">
+          <span class="panel__title">KPI row</span>
+          <span class="panel__meta">label 13 · value 32 · delta 12</span>
+        </div>
+        <div class="stage" dir="rtl" lang="he">
+          <div class="cols cols--3">
+            <div class="panel kpi">
+              <span class="kpi__label">רווח נקי</span>
+              <span class="kpi__value">₪12,480</span>
+              <div class="kpi__foot">
+                <span class="chip chip--profit"><svg class="icon" aria-hidden="true"><use href="#i-up-right"/></svg> 8.4%</span>
+                <span class="kpi__sub">מול החודש שעבר</span>
+              </div>
+              <span class="kpi__sub">30 עסקאות סגורות</span>
+            </div>
+            <div class="panel kpi">
+              <span class="kpi__label">אחוז הצלחה</span>
+              <span class="kpi__value">72%</span>
+              <div class="kpi__foot">
+                <span class="chip chip--neutral">12 מתוך 18</span>
+              </div>
+              <span class="kpi__sub">ללא עסקאות פתוחות</span>
+            </div>
+            <div class="panel kpi">
+              <span class="kpi__label">מקדם רווח</span>
+              <span class="kpi__value">1.84</span>
+              <div class="kpi__foot">
+                <span class="chip chip--loss"><svg class="icon" aria-hidden="true"><use href="#i-down-right"/></svg> 0.12</span>
+                <span class="kpi__sub">מול החודש שעבר</span>
+              </div>
+              <span class="kpi__sub">יעד: 1.5 ומעלה</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel mt-4">
+        <div class="panel__head">
+          <span class="panel__title">Card anatomy</span>
+          <span class="panel__meta">surface 1 · 14px · 20px padding</span>
+        </div>
+        <div class="stage" dir="rtl" lang="he">
+          <div class="panel" style="max-width:420px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-block-end:1px solid var(--border-hairline);">
+              <div>
+                <div style="font-size:var(--text-title-sm);font-weight:600;">ביצועים שבועיים</div>
+                <div style="font-size:var(--text-caption);color:var(--text-tertiary);">5 עסקאות · 4 סגורות</div>
+              </div>
+              <button class="btn btn--quiet btn--icon btn--sm" type="button" aria-label="אפשרויות">
+                <svg class="icon" aria-hidden="true"><use href="#i-more"/></svg>
+              </button>
+            </div>
+            <div style="padding:20px;display:grid;gap:12px;">
+              <div class="row" style="justify-content:space-between;">
+                <span class="small muted">יתרה נוכחית</span>
+                <span class="num" style="font-size:var(--text-body-lg);font-weight:700;">₪48,210</span>
+              </div>
+              <div class="row" style="justify-content:space-between;">
+                <span class="small muted">שינוי השבוע</span>
+                <span class="chip chip--profit"><svg class="icon" aria-hidden="true"><use href="#i-up-right"/></svg> ₪1,240</span>
+              </div>
+              <div style="height:6px;border-radius:var(--radius-pill);background:var(--bg-surface-2);overflow:hidden;display:flex;">
+                <span style="width:72%;background:var(--status-profit);"></span>
+                <span style="width:28%;background:var(--status-loss);"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        A card has exactly one header (title, optional subtitle, one action), one body, and an optional
+        footer. The header's divider is the only line inside the card; nested cards use surface 2 with
+        no shadow.
+      </p>
+
+      <h3 id="cmp-tabs">4.4 Tabs</h3>
+      <div class="panel">
+        <div class="panel__head">
+          <span class="panel__title">Three patterns</span>
+          <span class="panel__meta">segmented · pill · underline</span>
+        </div>
+        <div class="stage" dir="rtl" lang="he">
+          <div class="stack">
+            <div class="row" style="gap:16px;">
+              <span class="mini-label" style="width:88px;">segmented</span>
+              <div class="tabs" role="tablist" data-tabs>
+                <button type="button" role="tab" aria-selected="true">סקירה</button>
+                <button type="button" role="tab" aria-selected="false">עסקאות</button>
+                <button type="button" role="tab" aria-selected="false">אנליטיקה</button>
+              </div>
+            </div>
+            <div class="row" style="gap:16px;">
+              <span class="mini-label" style="width:88px;">pill + count</span>
+              <div class="tabs" role="tablist" data-tabs>
+                <button type="button" role="tab" aria-selected="true">הכל <span class="count">48</span></button>
+                <button type="button" role="tab" aria-selected="false">פתוחות <span class="count">3</span></button>
+                <button type="button" role="tab" aria-selected="false">סגורות <span class="count">45</span></button>
+                <button type="button" role="tab" aria-selected="false">תוכניות</button>
+              </div>
+            </div>
+            <div class="row" style="gap:16px;">
+              <span class="mini-label" style="width:88px;">underline</span>
+              <div class="tab-row" role="tablist" data-tabs>
+                <button type="button" role="tab" aria-selected="true">סיכום</button>
+                <button type="button" role="tab" aria-selected="false">פילוח</button>
+                <button type="button" role="tab" aria-selected="false">מגמה</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        Use segmented for 2–3 views of the same data, pill for views with counts, underline when the
+        tab row sits under a chart or table. Active state is accent text on an accent tint — never a
+        solid accent fill next to a second solid button.
+      </p>
+
+      <h3 id="cmp-table">4.5 Tables</h3>
+      <div class="panel">
+        <div class="panel__head">
+          <span class="panel__title">Trade table</span>
+          <span class="panel__meta">row 44 · header 36 · numeric 13.5</span>
+        </div>
+        <div class="stage" style="padding:0;" dir="rtl" lang="he">
+          <div style="overflow-x:auto;">
+            <table class="data-table" aria-label="דוגמת טבלת עסקאות">
+              <thead>
+                <tr>
+                  <th scope="col" aria-sort="descending"><button type="button">נכס <svg class="icon" aria-hidden="true"><use href="#i-arrow-down"/></svg></button></th>
+                  <th scope="col">כיוון</th>
+                  <th scope="col">סטטוס</th>
+                  <th scope="col" aria-sort="none"><button type="button">תאריך <svg class="icon" aria-hidden="true"><use href="#i-arrow-down"/></svg></button></th>
+                  <th scope="col">כניסה</th>
+                  <th scope="col">R</th>
+                  <th scope="col">רווח / הפסד</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="month-row">
+                  <td colspan="7">
+                    <div class="month-sep">
+                      <span class="month-sep__line"></span>
+                      <span class="month-sep__label">נובמבר 2026</span>
+                      <span class="month-sep__total">סה״כ <span class="num">+₪620</span></span>
+                      <span class="month-sep__line"></span>
+                    </div>
+                  </td>
+                </tr>
+                <tr class="is-selected">
+                  <td><span class="asset"><span class="asset__mark">B</span> <span dir="ltr">BTC/USDT</span></span></td>
+                  <td><span class="chip chip--profit"><svg class="icon" aria-hidden="true"><use href="#i-trend-up"/></svg> לונג</span></td>
+                  <td><span class="chip chip--neutral"><span class="dot"></span> סגורה</span></td>
+                  <td><span class="num">10/11</span></td>
+                  <td><span class="num">₪68,420</span></td>
+                  <td><span class="num num--profit">+1.8R</span></td>
+                  <td><span class="num num--profit">+₪1,240</span></td>
+                </tr>
+                <tr>
+                  <td><span class="asset"><span class="asset__mark">Ξ</span> <span dir="ltr">ETH/USDT</span></span></td>
+                  <td><span class="chip chip--loss"><svg class="icon" aria-hidden="true"><use href="#i-trend-down"/></svg> שורט</span></td>
+                  <td><span class="chip chip--warning"><span class="dot"></span> פתוחה</span></td>
+                  <td><span class="num">10/11</span></td>
+                  <td><span class="num">₪3,410</span></td>
+                  <td><span class="num num--muted">—</span></td>
+                  <td><span class="num num--muted">—</span></td>
+                </tr>
+                <tr>
+                  <td><span class="asset"><span class="asset__mark">S</span> <span dir="ltr">SOL/USDT</span></span></td>
+                  <td><span class="chip chip--profit"><svg class="icon" aria-hidden="true"><use href="#i-trend-up"/></svg> לונג</span></td>
+                  <td><span class="chip chip--neutral"><span class="dot"></span> סגורה</span></td>
+                  <td><span class="num">09/11</span></td>
+                  <td><span class="num">₪182.40</span></td>
+                  <td><span class="num num--loss">−1.0R</span></td>
+                  <td><span class="num num--loss">−₪620</span></td>
+                </tr>
+                <tr>
+                  <td><span class="asset"><span class="asset__mark">A</span> <span dir="ltr">AAPL</span></span></td>
+                  <td><span class="chip chip--profit"><svg class="icon" aria-hidden="true"><use href="#i-trend-up"/></svg> לונג</span></td>
+                  <td><span class="chip chip--neutral"><span class="dot"></span> סגורה</span></td>
+                  <td><span class="num">09/11</span></td>
+                  <td><span class="num">₪228.10</span></td>
+                  <td><span class="num num--profit">+2.4R</span></td>
+                  <td><span class="num num--profit">+₪980</span></td>
+                </tr>
+                <tr>
+                  <td><span class="asset"><span class="asset__mark">€</span> <span dir="ltr">EUR/USD</span></span></td>
+                  <td><span class="chip chip--loss"><svg class="icon" aria-hidden="true"><use href="#i-trend-down"/></svg> שורט</span></td>
+                  <td><span class="chip chip--accent"><span class="dot"></span> ממתין</span></td>
+                  <td><span class="num">08/11</span></td>
+                  <td><span class="num">₪1.0840</span></td>
+                  <td><span class="num num--muted">—</span></td>
+                  <td><span class="num num--muted">—</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <ul class="mt-4">
+        <li>Headers are 12px tertiary and sortable ones carry an icon plus <code>aria-sort</code>.</li>
+        <li>Numbers use the tabular face at 13.5px, isolated LTR, so <span class="mono">+1.8R</span> reads correctly inside the Hebrew row.</li>
+        <li>Month separators are a row, not a border trick, so they survive on mobile card lists.</li>
+        <li>Selected rows use the accent tint; hover uses surface 2. Never both at full strength.</li>
+      </ul>
+
+      <h3 id="cmp-status">4.6 Status and badges</h3>
+      <div class="panel">
+        <div class="panel__head">
+          <span class="panel__title">Chips</span>
+          <span class="panel__meta">12px · radius 6 · tint + text</span>
+        </div>
+        <div class="stage" dir="rtl" lang="he">
+          <div class="row">
+            <span class="chip chip--profit"><span class="dot"></span> רווח</span>
+            <span class="chip chip--loss"><span class="dot"></span> הפסד</span>
+            <span class="chip chip--warning"><span class="dot"></span> איזון</span>
+            <span class="chip chip--accent"><span class="dot"></span> חדש</span>
+            <span class="chip chip--neutral"><span class="dot"></span> סגור</span>
+            <span class="chip chip--profit"><svg class="icon" aria-hidden="true"><use href="#i-trend-up"/></svg> לונג</span>
+            <span class="chip chip--loss"><svg class="icon" aria-hidden="true"><use href="#i-trend-down"/></svg> שורט</span>
+            <span class="chip chip--accent"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> LIVE</span>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        Every chip keeps a 12px label. Direction and live state also carry an icon, so the meaning
+        survives greyscale printing and colour-vision deficiency.
+      </p>
+
+      <h3 id="cmp-charts">4.7 Chart chrome</h3>
+      <p>
+        Charts inherit the same surfaces, ticks and tooltips. The categorical ramp is defined once;
+        the equity area uses accent, while profit/loss bars use the status hues.
+      </p>
+      <div class="cols">
+        <div class="panel">
+          <div class="panel__head">
+            <span class="panel__title">עקומת הון</span>
+            <span class="panel__meta">area · accent</span>
+          </div>
+          <div class="stage" style="padding:var(--space-4);" dir="rtl" lang="he">
+            <div class="chart-frame">
+              <svg class="chart" viewBox="0 0 640 220" role="img" aria-label="עקומת הון עולה">
+                <defs>
+                  <linearGradient id="eq-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--chart-1)" stop-opacity="0.32"/>
+                    <stop offset="100%" stop-color="var(--chart-1)" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <g stroke="var(--chart-grid)" stroke-width="1">
+                  <line x1="40" y1="40" x2="628" y2="40"/>
+                  <line x1="40" y1="80" x2="628" y2="80"/>
+                  <line x1="40" y1="120" x2="628" y2="120"/>
+                  <line x1="40" y1="160" x2="628" y2="160"/>
+                </g>
+                <g fill="var(--chart-tick)" font-size="12" text-anchor="end">
+                  <text x="628" y="44">₪12K</text>
+                  <text x="628" y="84">₪8K</text>
+                  <text x="628" y="124">₪4K</text>
+                  <text x="628" y="164">₪0</text>
+                </g>
+                <g fill="var(--chart-tick)" font-size="12" text-anchor="middle">
+                  <text x="70" y="196">ספט׳</text>
+                  <text x="210" y="196">אוק׳</text>
+                  <text x="350" y="196">נוב׳</text>
+                  <text x="490" y="196">דצמ׳</text>
+                  <text x="610" y="196">ינו׳</text>
+                </g>
+                <path d="M50 152 L110 138 L170 146 L230 118 L290 124 L350 96 L410 104 L470 74 L530 80 L572 54 L600 40 L600 176 L50 176 Z"
+                      fill="url(#eq-fill)"/>
+                <path d="M50 152 L110 138 L170 146 L230 118 L290 124 L350 96 L410 104 L470 74 L530 80 L572 54 L600 40"
+                      fill="none" stroke="var(--chart-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="470" cy="74" r="3.5" fill="var(--chart-1)" stroke="var(--bg-canvas)" stroke-width="2"/>
+              </svg>
+              <div class="chart-tip">
+                <span>נוב׳ 2026</span>
+                <span class="chart-tip__row"><span>הון</span> <span class="num">₪12,480</span></span>
+                <span class="chart-tip__row"><span>שינוי</span> <span class="num" style="color:var(--status-profit);">+8.4%</span></span>
+              </div>
+            </div>
+            <div class="chart-legend">
+              <span><i class="legend-dot" style="background:var(--chart-1);"></i> הון</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head">
+            <span class="panel__title">ביצועים לפי יום</span>
+            <span class="panel__meta">bars · profit / loss</span>
+          </div>
+          <div class="stage" style="padding:var(--space-4);" dir="rtl" lang="he">
+            <svg class="chart" viewBox="0 0 420 220" role="img" aria-label="רווח והפסד לפי יום בשבוע">
+              <g stroke="var(--chart-grid)" stroke-width="1">
+                <line x1="28" y1="60" x2="408" y2="60"/>
+                <line x1="28" y1="95" x2="408" y2="95"/>
+                <line x1="28" y1="130" x2="408" y2="130"/>
+                <line x1="28" y1="165" x2="408" y2="165"/>
+              </g>
+              <line x1="28" y1="130" x2="408" y2="130" stroke="var(--border-strong)" stroke-width="1"/>
+              <g>
+                <rect x="36" y="86" width="30" height="44" rx="4" fill="var(--status-profit)"/>
+                <rect x="86" y="104" width="30" height="26" rx="4" fill="var(--status-profit)"/>
+                <rect x="136" y="70" width="30" height="60" rx="4" fill="var(--status-profit)"/>
+                <rect x="186" y="130" width="30" height="22" rx="4" fill="var(--status-loss)"/>
+                <rect x="236" y="130" width="30" height="34" rx="4" fill="var(--status-loss)"/>
+                <rect x="286" y="98" width="30" height="32" rx="4" fill="var(--status-profit)"/>
+                <rect x="336" y="112" width="30" height="18" rx="4" fill="var(--status-profit)"/>
+              </g>
+              <g fill="var(--chart-tick)" font-size="12" text-anchor="middle">
+                <text x="51" y="196">א׳</text>
+                <text x="101" y="196">ב׳</text>
+                <text x="151" y="196">ג׳</text>
+                <text x="201" y="196">ד׳</text>
+                <text x="251" y="196">ה׳</text>
+                <text x="301" y="196">ו׳</text>
+                <text x="351" y="196">ש׳</text>
+              </g>
+            </svg>
+            <div class="chart-legend">
+              <span><i class="legend-dot" style="background:var(--status-profit);"></i> רווח</span>
+              <span><i class="legend-dot" style="background:var(--status-loss);"></i> הפסד</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="mt-4">
+        <li>Ticks are 12px <code>--chart-tick</code>; grid lines are 1px <code>--chart-grid</code>, never dashed.</li>
+        <li>Tooltips use the elevated surface, radius 10, 12px labels and tabular values.</li>
+        <li>Time flows left to right; the value axis sits on the inline-start edge (right in RTL).</li>
+        <li>The area fill fades from 32% to 0 — one gradient, tied to the accent, not a second colour.</li>
+      </ul>
+
+      <h3 id="cmp-overlays">4.8 Overlays, toasts and empty states</h3>
+      <div class="panel">
+        <div class="panel__head">
+          <span class="panel__title">Modal, toast, skeleton, empty</span>
+          <span class="panel__meta">panel 20 · toast 14</span>
+        </div>
+        <div class="overlay-stage" dir="rtl" lang="he">
+          <div class="modal">
+            <div class="modal__head">
+              <span class="modal__title">עסקה חדשה</span>
+              <button class="modal__close" type="button" aria-label="סגירה">
+                <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
+              </button>
+            </div>
+            <div class="modal__body">
+              <div class="field">
+                <label class="field__label" for="m-asset">נכס</label>
+                <button class="control select-trigger" id="m-asset" type="button" aria-haspopup="listbox">
+                  <span>BTC/USDT</span>
+                  <svg class="icon" aria-hidden="true"><use href="#i-chev-d"/></svg>
+                </button>
+              </div>
+              <div class="field">
+                <label class="field__label" for="m-size">גובה הפוזיציה</label>
+                <div class="input-group input-group--end">
+                  <input class="control num" id="m-size" type="text" value="1,240" style="text-align:right;">
+                  <span class="input-group__suffix">₪</span>
+                </div>
+              </div>
+            </div>
+            <div class="modal__foot">
+              <button class="btn btn--quiet" type="button">ביטול</button>
+              <button class="btn btn--primary" type="button">שמור עסקה</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cols mt-4">
+        <div class="panel">
+          <div class="panel__head"><span class="panel__title">Toast</span></div>
+          <div class="stage" dir="rtl" lang="he">
+            <div class="toast">
+              <svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>
+              <span>העסקה נשמרה</span>
+              <button class="toast__action" type="button">ביטול</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel__head"><span class="panel__title">Skeleton</span></div>
+          <div class="stage">
+            <div class="skeleton-card">
+              <div class="sk sk--title"></div>
+              <div class="sk sk--wide"></div>
+              <div class="sk sk--mid"></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel__head"><span class="panel__title">Empty</span></div>
+          <div class="stage" dir="rtl" lang="he">
+            <div class="empty">
+              <span class="empty__icon"><svg class="icon icon--xl" aria-hidden="true"><use href="#i-inbox"/></svg></span>
+              <h4>אין עסקאות עדיין</h4>
+              <p>הוסף את העסקה הראשונה כדי להתחיל לעקוב אחרי הביצועים.</p>
+              <button class="btn btn--secondary btn--sm" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> עסקה חדשה
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        One modal width scale (400 / 560 / 720). The scrim is a token, not a hard-coded black. Toasts
+        sit above the mobile tab bar and clear the safe-area inset.
+      </p>
+
+      <h3 id="cmp-nav">4.9 Navigation</h3>
+      <div class="cols">
+        <div class="panel">
+          <div class="panel__head"><span class="panel__title">Sidebar row</span><span class="panel__meta">42 · 10</span></div>
+          <div class="stage" dir="rtl" lang="he">
+            <nav class="nav-demo" aria-label="דוגמת ניווט">
+              <a class="nav-row" href="#cmp-nav"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg> בית</a>
+              <a class="nav-row is-active" href="#cmp-nav" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg> יומן מסחר</a>
+              <a class="nav-row" href="#cmp-nav"><svg class="icon" aria-hidden="true"><use href="#i-activity"/></svg> שוק <span class="nav-row__badge">3</span></a>
+              <a class="nav-row" href="#cmp-nav"><svg class="icon" aria-hidden="true"><use href="#i-bot"/></svg> TradeAI</a>
+              <a class="nav-row" href="#cmp-nav"><svg class="icon" aria-hidden="true"><use href="#i-briefcase"/></svg> החזקות</a>
+            </nav>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel__head"><span class="panel__title">Mobile tab bar</span><span class="panel__meta">64 · 5 items</span></div>
+          <div class="stage" dir="rtl" lang="he">
+            <nav class="bottomnav" aria-label="דוגמת ניווט תחתון">
+              <a class="bottomnav__item" href="#cmp-nav"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg> בית</a>
+              <a class="bottomnav__item is-active" href="#cmp-nav"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg> יומן</a>
+              <a class="bottomnav__plus" href="#cmp-nav" aria-label="עסקה חדשה"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></a>
+              <a class="bottomnav__item" href="#cmp-nav"><svg class="icon" aria-hidden="true"><use href="#i-bot"/></svg> TradeAI</a>
+              <a class="bottomnav__item" href="#cmp-nav"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg> אני</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        The active row is accent text on an accent tint with a 2px inline-start bar. The mobile bar
+        keeps five destinations and one centre action; labels are 12px, never 10.
+      </p>
+    </section>
+
+    <!-- ============================ RTL ============================= -->
+    <section class="section" id="rtl">
+      <div class="section__head">
+        <p class="eyebrow">05 · RTL &amp; numerals</p>
+        <h2>Right-to-left is a layout rule, not a translation</h2>
+        <p class="lede">
+          The page direction is set once on <code>&lt;html&gt;</code>. Everything else follows from
+          logical properties, isolated number runs and a short list of icons that mirror.
+        </p>
+      </div>
+
+      <h3>Layout</h3>
+      <ul>
+        <li>Use <code>padding-inline</code>, <code>margin-inline</code>, <code>inset-inline-start</code>, <code>border-inline-start</code>. A physical <code>left</code> is a bug in waiting.</li>
+        <li>Flex and grid follow the writing direction automatically; never reverse a row by hand.</li>
+        <li>Scroll containers start at the right edge without extra code — no negative margins.</li>
+        <li>Decorative overlays anchor on one axis only (a badge uses <code>top</code> + <code>inset-inline-end</code>).</li>
+      </ul>
+
+      <h3>Numbers and currency</h3>
+      <div class="compare">
+        <div class="compare__item compare__item--do">
+          <div class="compare__head"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Do — isolate the run</div>
+          <div class="compare__body">
+            Wrap the figure in a tabular, left-to-right run so the sign stays leading and the currency
+            stays adjacent to the digits.
+          </div>
+          <div class="compare__demo rtl-demo rtl-demo--good" lang="he" dir="rtl">
+            <div class="row" style="justify-content:space-between;">
+              <span>רווח נקי</span>
+              <span class="num" style="font-weight:700;">−₪1,240</span>
+            </div>
+            <div class="row mt-4" style="justify-content:space-between;">
+              <span>תשואה</span>
+              <span class="num">+1.8R · +2.4%</span>
+            </div>
+          </div>
+        </div>
+        <div class="compare__item compare__item--dont">
+          <div class="compare__head"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg> Don't — format the sign last</div>
+          <div class="compare__body">
+            Concatenating a minus after the digits, or leaving the run in the RTL paragraph, moves the
+            sign to the wrong end when the string is isolated or copied.
+          </div>
+          <div class="compare__demo rtl-demo rtl-demo--bad" lang="he" dir="rtl">
+            <div class="row" style="justify-content:space-between;">
+              <span>רווח נקי</span>
+              <span class="num">₪1,240−</span>
+            </div>
+            <div class="row mt-4" style="justify-content:space-between;">
+              <span>תשואה</span>
+              <span class="num">1.8R+</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Mirrored icons</h3>
+      <p>
+        Icons that point along the reading direction mirror; icons that describe a physical object or
+        a clockwise motion do not. This is the entire list — everything else is direction-neutral.
+      </p>
+      <div class="panel">
+        <div class="panel__head"><span class="panel__title">Direction-bearing</span><span class="panel__meta">mirror in RTL</span></div>
+        <div class="stage" dir="rtl" lang="he">
+          <div class="mirror-pair">
+            <div class="mirror-cell"><svg class="icon" aria-hidden="true"><use href="#i-chev-l"/></svg> הבא</div>
+            <div class="mirror-cell"><svg class="icon" aria-hidden="true"><use href="#i-chev-r"/></svg> הקודם</div>
+            <div class="mirror-cell"><svg class="icon" aria-hidden="true"><use href="#i-arrow-up"/></svg> מיון עולה</div>
+            <div class="mirror-cell"><svg class="icon" aria-hidden="true"><use href="#i-arrow-down"/></svg> מיון יורד</div>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        Sorting arrows point along the value axis (up = ascending) and never mirror. A back chevron
+        points right in RTL, because “back” is to the right of the reading path.
+      </p>
+
+      <h3>Mixed strings</h3>
+      <p>
+        A pair name and a multiple can travel in one string. Isolate the Latin token and let the
+        Hebrew sentence flow around it; do not reorder the text by hand.
+      </p>
+      <div class="rtl-demo" dir="rtl" lang="he">
+        <div class="row" style="justify-content:space-between;">
+          <span>העסקה האחרונה</span>
+          <span><span dir="ltr" class="num">BTC/USDT</span> · <span class="num">+1.8R</span></span>
+        </div>
+        <div class="row mt-4" style="justify-content:space-between;">
+          <span>חיבור בורסה</span>
+          <span><span dir="ltr" style="font-family:var(--font-mono);">Binance</span> · מחובר</span>
+        </div>
+      </div>
+
+      <h3>Alignment</h3>
+      <p>
+        Text aligns to the inline-start edge. Numeric columns align to the same start edge with the
+        number isolated, so digits line up on the right of the column and the sign stays at the
+        leading edge of each figure.
+      </p>
+    </section>
+
+    <!-- ======================= ACCESSIBILITY ======================== -->
+    <section class="section" id="accessibility">
+      <div class="section__head">
+        <p class="eyebrow">06 · Accessibility</p>
+        <h2>What is checked, and what is enforced</h2>
+        <p class="lede">
+          Every pair below is measured from the shipped token values. The system targets WCAG 2.2 AA:
+          4.5:1 for body text, 3:1 for large text, icons and essential graphics.
+        </p>
+      </div>
+
+      <h3>Contrast</h3>
+      <div class="table-wrap">
+        <table class="token-table">
+          <thead><tr><th>Token</th><th>Dark on canvas / card</th><th>Light on canvas / card</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td>text primary</td><td><span class="num">19.06 / 17.00</span></td><td><span class="num">17.33 / 18.44</span></td><td><span class="pass">Pass</span></td></tr>
+            <tr><td>text secondary</td><td><span class="num">9.84 / 8.78</span></td><td><span class="num">8.20 / 8.73</span></td><td><span class="pass">Pass</span></td></tr>
+            <tr><td>text tertiary</td><td><span class="num">6.71 / 5.99</span></td><td><span class="num">5.33 / 5.67</span></td><td><span class="pass">Pass</span></td></tr>
+            <tr><td>accent text</td><td><span class="num">5.71 / 5.09</span></td><td><span class="num">6.14 / 6.54</span></td><td><span class="pass">Pass</span></td></tr>
+            <tr><td>profit text</td><td><span class="num">9.22 / 8.22</span></td><td><span class="num">6.53 / 6.95</span></td><td><span class="pass">Pass</span></td></tr>
+            <tr><td>loss text</td><td><span class="num">5.58 / 4.98</span></td><td><span class="num">5.93 / 6.31</span></td><td><span class="pass">Pass</span></td></tr>
+            <tr><td>warning text</td><td><span class="num">9.78 / 8.72</span></td><td><span class="num">6.50 / 6.92</span></td><td><span class="pass">Pass</span></td></tr>
+            <tr><td>primary label on gradient</td><td><span class="num">5.14 – 8.82</span></td><td><span class="num">5.14 – 8.82</span></td><td><span class="pass">Pass</span></td></tr>
+            <tr><td>retired muted <span class="mono">#606070</span></td><td><span class="num">3.40</span></td><td>—</td><td><span class="fail">Retired</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Focus</h3>
+      <div class="panel">
+        <div class="panel__head"><span class="panel__title">Visible focus</span><span class="panel__meta">2px accent · 2px offset</span></div>
+        <div class="stage" dir="rtl" lang="he">
+          <div class="row">
+            <button class="btn btn--primary" type="button" style="outline:2px solid var(--focus-ring); outline-offset:2px;">שמור עסקה</button>
+            <button class="btn btn--secondary" type="button" style="outline:2px solid var(--focus-ring); outline-offset:2px;">ייצוא</button>
+            <input class="control" style="max-width:220px; border-color:var(--accent); box-shadow:var(--field-ring);" value="יומן ראשי" aria-label="שם היומן">
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        The ring is drawn outside the control so it never hides behind a card edge, and it uses the
+        same accent in both themes so it is never mistaken for an error state.
+      </p>
+
+      <h3>Rules</h3>
+      <ul>
+        <li><strong>Targets.</strong> Primary actions, fields and mobile controls are at least 44px tall. The 36px compact size is allowed only for secondary toolbar actions; icon-only buttons use the square icon variant.</li>
+        <li><strong>Never colour alone.</strong> Status chips pair hue with text, and direction pairs hue with an arrow.</li>
+        <li><strong>Type scaling.</strong> All sizes are in rem; a 200% root size must not clip a label or a table cell.</li>
+        <li><strong>Motion.</strong> Reduced motion collapses every duration token to 1ms, including the shimmer and the ticker.</li>
+        <li><strong>Names.</strong> Icon-only controls carry an accessible name; sortable headers expose <code>aria-sort</code>.</li>
+        <li><strong>Contrast audit.</strong> Dark and light are checked independently — a passing dark token says nothing about light.</li>
+      </ul>
+    </section>
+
+    <!-- ========================= MIGRATION ========================== -->
+    <section class="section" id="migration">
+      <div class="section__head">
+        <p class="eyebrow">07 · Migration</p>
+        <h2>Move without a flag day</h2>
+        <p class="lede">
+          The new token file keeps the old names as aliases, so it can ship before a single component
+          changes. Then each screen migrates on its own, smallest surface first.
+        </p>
+      </div>
+
+      <h3>Name map</h3>
+      <div class="table-wrap">
+        <table class="token-table">
+          <thead><tr><th>Today</th><th>Becomes</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr><td><code>--color-bg-primary</code></td><td><code>--bg-canvas</code></td><td>Same value, semantic name</td></tr>
+            <tr><td><code>--color-bg-secondary</code></td><td><code>--bg-surface-1</code></td><td>Cards and panels</td></tr>
+            <tr><td><code>--color-bg-tertiary</code></td><td><code>--bg-surface-2</code></td><td>Inputs, inset rows, tab tracks</td></tr>
+            <tr><td><code>--color-bg-overlay</code></td><td><code>--bg-overlay</code></td><td>Dropdowns and tooltips</td></tr>
+            <tr><td><code>--color-border-primary</code></td><td><code>--border-hairline</code></td><td>9% instead of 8% on dark</td></tr>
+            <tr><td><code>--color-text-muted</code></td><td><code>--text-tertiary</code></td><td>5.4:1 → 6.7:1 on black</td></tr>
+            <tr><td><code>--color-chart-tick</code></td><td><code>--chart-tick</code></td><td>Grouped with the chart ramp</td></tr>
+            <tr><td><code>--color-accent-primary</code></td><td><code>--accent</code></td><td>Hover and strong keep their roles</td></tr>
+            <tr><td><code>--color-profit</code></td><td><code>--status-profit</code></td><td>Text value; tint is separate</td></tr>
+            <tr><td><code>--color-breakeven</code></td><td><code>--status-warning</code></td><td>Same amber, clearer role</td></tr>
+            <tr><td><code>--color-chart-purple</code></td><td><code>--chart-3</code></td><td>One categorical slot, never UI chrome</td></tr>
+            <tr><td><code>--accent-gradient</code></td><td><code>--gradient-accent</code></td><td>Dark stop moves to <span class="mono">#3b82f6</span></td></tr>
+            <tr><td><code>rounded-lg</code> / <code>xl</code> / <code>2xl</code></td><td><code>--radius-control</code> / <code>--radius-card</code> / <code>--radius-panel</code></td><td>Radius follows role, not page</td></tr>
+            <tr><td><code>text-[10px]</code> / <code>[11px]</code></td><td><code>--text-label</code></td><td>12px floor</td></tr>
+            <tr><td><code>focus:border-accent-primary</code></td><td>Focus ring token</td><td>2px ring, 2px offset</td></tr>
+            <tr><td><code>rgba(139,92,246,…)</code> glow</td><td><code>--accent-tint</code></td><td>Violet removed from chrome</td></tr>
+            <tr><td><code>rgba(2,132,199,…)</code> datepicker</td><td><code>--accent</code> (light)</td><td>Dead cyan removed</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Order of work</h3>
+      <ol>
+        <li><strong>Ship the token file with aliases.</strong> Nothing renders differently; the old names resolve to the new values.</li>
+        <li><strong>Buttons and fields.</strong> Two primitives, the most repeated class strings, the biggest win.</li>
+        <li><strong>Cards, KPI and tabs.</strong> Collapse the radius and padding drift.</li>
+        <li><strong>Tables.</strong> Adopt the row, header and numeric-cell spec, then delete per-page overrides.</li>
+        <li><strong>Charts.</strong> Swap ad-hoc hexes for the categorical tokens and the shared tick style.</li>
+        <li><strong>Delete the aliases.</strong> Only after a search shows no call site reads the old names.</li>
+      </ol>
+
+      <h3>Retired</h3>
+      <ul>
+        <li>Violet in UI chrome — the light page glow and the sidebar active wash.</li>
+        <li>Text below 12px, including the 8px “New” and “LIVE” badges.</li>
+        <li>Hover states that grow a shadow or turn text lighter than its resting colour.</li>
+        <li>Gradient text on navigation labels — gradient is reserved for large numerals and the brand mark.</li>
+        <li>Backdrop blur on always-present cards; blur stays for transient overlays only.</li>
+      </ul>
+    </section>
+
+    <!-- =========================== TOKENS =========================== -->
+    <section class="section" id="tokens">
+      <div class="section__head">
+        <p class="eyebrow">08 · Token reference</p>
+        <h2>The names, values and owners</h2>
+        <p class="lede">
+          The full set lives in <code>tokens.css</code>; the machine-readable copy is
+          <code>tokens.json</code>. These are the tokens a component is allowed to read.
+        </p>
+      </div>
+
+      <h3>Semantic colour</h3>
+      <div class="table-wrap">
+        <table class="token-table">
+          <thead><tr><th>Token</th><th>Dark</th><th>Light</th><th>Use</th></tr></thead>
+          <tbody>
+            <tr><td><code>--bg-canvas</code></td><td><span class="mono">#000000</span></td><td><span class="mono">#f3f5f9</span></td><td>Page ground</td></tr>
+            <tr><td><code>--bg-surface-1</code></td><td><span class="mono">white 4.5%</span></td><td><span class="mono">white 72%</span></td><td>Cards, panels</td></tr>
+            <tr><td><code>--bg-surface-2</code></td><td><span class="mono">white 7%</span></td><td><span class="mono">white 90%</span></td><td>Inputs, inset rows</td></tr>
+            <tr><td><code>--bg-surface-3</code></td><td><span class="mono">white 10%</span></td><td><span class="mono">#ffffff</span></td><td>Hover fills, chips</td></tr>
+            <tr><td><code>--bg-elevated</code></td><td><span class="mono">#101013</span></td><td><span class="mono">#ffffff</span></td><td>Modals, sheets</td></tr>
+            <tr><td><code>--bg-overlay</code></td><td><span class="mono">rgba(12,12,14,.86)</span></td><td><span class="mono">rgba(255,255,255,.96)</span></td><td>Dropdowns, tooltips, toasts</td></tr>
+            <tr><td><code>--border-hairline</code></td><td><span class="mono">white 9%</span></td><td><span class="mono">slate 12%</span></td><td>Every resting edge</td></tr>
+            <tr><td><code>--border-strong</code></td><td><span class="mono">white 20%</span></td><td><span class="mono">slate 26%</span></td><td>Hover edges, dividers with weight</td></tr>
+            <tr><td><code>--text-primary</code></td><td><span class="mono">#f2f4f7</span></td><td><span class="mono">#0e1116</span></td><td>Titles, figures</td></tr>
+            <tr><td><code>--text-secondary</code></td><td><span class="mono">#aab2c0</span></td><td><span class="mono">#414a58</span></td><td>Body copy</td></tr>
+            <tr><td><code>--text-tertiary</code></td><td><span class="mono">#8a92a2</span></td><td><span class="mono">#5c6675</span></td><td>Labels, hints, ticks</td></tr>
+            <tr><td><code>--accent</code></td><td><span class="mono">#3b82f6</span></td><td><span class="mono">#1d4ed8</span></td><td>Action, selection, focus</td></tr>
+            <tr><td><code>--accent-tint</code></td><td><span class="mono">blue 14%</span></td><td><span class="mono">blue 9%</span></td><td>Selected rows, active tabs</td></tr>
+            <tr><td><code>--status-profit</code></td><td><span class="mono">#22c55e</span></td><td><span class="mono">#166534</span></td><td>Gains</td></tr>
+            <tr><td><code>--status-loss</code></td><td><span class="mono">#ef4444</span></td><td><span class="mono">#b91c1c</span></td><td>Losses, destructive text</td></tr>
+            <tr><td><code>--status-warning</code></td><td><span class="mono">#f59e0b</span></td><td><span class="mono">#92400e</span></td><td>Breakeven, open, attention</td></tr>
+            <tr><td><code>--status-info</code></td><td><span class="mono">#38bdf8</span></td><td><span class="mono">#0369a1</span></td><td>Informational states</td></tr>
+            <tr><td><code>--focus-ring</code></td><td><span class="mono">#60a5fa</span></td><td><span class="mono">#1d4ed8</span></td><td>Keyboard focus outline</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Charts</h3>
+      <div class="table-wrap">
+        <table class="token-table">
+          <thead><tr><th>Token</th><th>Dark</th><th>Light</th><th>Use</th></tr></thead>
+          <tbody>
+            <tr><td><code>--chart-1</code></td><td><span class="swatch-inline" style="background:#38bdf8;"></span><span class="mono">#38bdf8</span></td><td><span class="swatch-inline" style="background:#0369a1;"></span><span class="mono">#0369a1</span></td><td>Primary series, equity</td></tr>
+            <tr><td><code>--chart-2</code></td><td><span class="swatch-inline" style="background:#22c55e;"></span><span class="mono">#22c55e</span></td><td><span class="swatch-inline" style="background:#15803d;"></span><span class="mono">#15803d</span></td><td>Profit bars</td></tr>
+            <tr><td><code>--chart-3</code></td><td><span class="swatch-inline" style="background:#a78bfa;"></span><span class="mono">#a78bfa</span></td><td><span class="swatch-inline" style="background:#7c3aed;"></span><span class="mono">#7c3aed</span></td><td>Third category (the only violet)</td></tr>
+            <tr><td><code>--chart-4</code></td><td><span class="swatch-inline" style="background:#f59e0b;"></span><span class="mono">#f59e0b</span></td><td><span class="swatch-inline" style="background:#b45309;"></span><span class="mono">#b45309</span></td><td>Fourth category</td></tr>
+            <tr><td><code>--chart-5</code></td><td><span class="swatch-inline" style="background:#f472b6;"></span><span class="mono">#f472b6</span></td><td><span class="swatch-inline" style="background:#db2777;"></span><span class="mono">#db2777</span></td><td>Fifth category</td></tr>
+            <tr><td><code>--chart-6</code></td><td><span class="swatch-inline" style="background:#94a3b8;"></span><span class="mono">#94a3b8</span></td><td><span class="swatch-inline" style="background:#64748b;"></span><span class="mono">#64748b</span></td><td>Remainder, “other”</td></tr>
+            <tr><td><code>--chart-grid</code></td><td><span class="mono">white 8%</span></td><td><span class="mono">slate 10%</span></td><td>Grid lines</td></tr>
+            <tr><td><code>--chart-tick</code></td><td><span class="mono">#c8cdd6</span></td><td><span class="mono">#3f4854</span></td><td>Axis labels at 12px</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Type, space, shape, motion</h3>
+      <div class="table-wrap">
+        <table class="token-table">
+          <thead><tr><th>Group</th><th>Tokens</th><th>Values</th></tr></thead>
+          <tbody>
+            <tr><td>Font</td><td><code>--font-sans</code></td><td><span class="mono">Heebo → system Hebrew</span></td></tr>
+            <tr><td>Weights</td><td><code>--fw-regular / medium / bold / black</code></td><td><span class="num">400 / 500 / 700 / 800</span></td></tr>
+            <tr><td>Scale</td><td><code>--text-label … --text-display-lg</code></td><td><span class="num">12 / 13 / 14 / 16 / 17 / 18 / 20 / 24 / 28 / 32 / 44</span></td></tr>
+            <tr><td>Line height</td><td><code>--leading-tight … relaxed</code></td><td><span class="num">1.15 / 1.3 / 1.5 / 1.6</span></td></tr>
+            <tr><td>Space</td><td><code>--space-0-5 … --space-16</code></td><td><span class="num">2 / 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 / 64</span></td></tr>
+            <tr><td>Radius</td><td><code>--radius-xs / control / card / panel / pill</code></td><td><span class="num">6 / 10 / 14 / 20 / 999</span></td></tr>
+            <tr><td>Elevation</td><td><code>--elev-1 / 2 / 3</code></td><td>Inset highlight + one drop, never animated</td></tr>
+            <tr><td>Duration</td><td><code>--dur-quick / base / moderate / large</code></td><td><span class="num">120 / 180 / 240 / 320 ms</span></td></tr>
+            <tr><td>Easing</td><td><code>--ease-out / in / standard</code></td><td>Cubic-bezier, out for enter, in for exit</td></tr>
+            <tr><td>Controls</td><td><code>--btn-h-* / --field-h / --table-row-h</code></td><td><span class="num">36 / 44 / 48 · 44 · 44</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Wiring it up</h3>
+      <p>
+        In Tailwind v4, point <code>@theme</code> at the semantic tokens rather than at raw hexes, so a
+        utility class can never bypass the theme. The compatibility block at the end of
+        <code>tokens.css</code> keeps today's <code>--color-*</code> names resolving while the
+        migration runs.
+      </p>
+
+      <div class="callout">
+        <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
+        <p>
+          <strong>Scope of this document.</strong> Nothing in the TradeOS repository was created,
+          edited or deleted. The audit is read-only; this system lives beside it and is ready to be
+          adopted one surface at a time.
+        </p>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <p>TradeOS Design System · v1.0 · 2026-11 · audited at commit <span class="mono">3a70c50</span> (v2.3.1).</p>
+      <p>Tokens: <span class="mono">tokens.css</span> · <span class="mono">tokens.json</span>. Type: Heebo, self-hosted. No product source was modified.</p>
+    </footer>
+
+  </main>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var buttons = Array.prototype.slice.call(document.querySelectorAll('[data-theme-set]'));
+
+    function applyTheme(theme) {
+      root.setAttribute('data-theme', theme);
+      buttons.forEach(function (b) {
+        b.setAttribute('aria-pressed', b.getAttribute('data-theme-set') === theme ? 'true' : 'false');
+      });
+    }
+
+    buttons.forEach(function (b) {
+      b.addEventListener('click', function () {
+        var theme = b.getAttribute('data-theme-set');
+        applyTheme(theme);
+        try { localStorage.setItem('tos-ds-theme', theme); } catch (e) {}
+      });
+    });
+
+    try {
+      var saved = localStorage.getItem('tos-ds-theme');
+      if (saved === 'light' || saved === 'dark') applyTheme(saved);
+    } catch (e) {}
+
+    /* tab specimens */
+    Array.prototype.slice.call(document.querySelectorAll('[data-tabs]')).forEach(function (group) {
+      var tabs = Array.prototype.slice.call(group.querySelectorAll('[role="tab"]'));
+      tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          tabs.forEach(function (t) { t.setAttribute('aria-selected', t === tab ? 'true' : 'false'); });
+        });
+      });
+    });
+
+    /* scrollspy */
+    var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+    var sections = links.map(function (link) {
+      return document.querySelector(link.getAttribute('href'));
+    }).filter(Boolean);
+
+    function setActive(id) {
+      links.forEach(function (link) {
+        link.classList.toggle('is-active', link.getAttribute('href') === '#' + id);
+      });
+    }
+
+    if ('IntersectionObserver' in window && sections.length) {
+      var visible = {};
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          visible[entry.target.id] = entry.isIntersecting ? entry.intersectionRatio : 0;
+        });
+        var best = null, bestRatio = 0;
+        Object.keys(visible).forEach(function (id) {
+          if (visible[id] > bestRatio) { bestRatio = visible[id]; best = id; }
+        });
+        if (best) setActive(best);
+      }, { rootMargin: '-15% 0px -65% 0px', threshold: [0, 0.2, 0.6, 1] });
+      sections.forEach(function (s) { io.observe(s); });
+    }
+  })();
+</script>
+
+</body>
+</html>

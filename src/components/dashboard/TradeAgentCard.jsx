@@ -86,95 +86,62 @@ export default function TradeAgentCard({ trades }) {
 
   if (!a) {
     return (
-      <div
-        className="relative overflow-hidden rounded-2xl p-4 md:p-5 border bg-bg-secondary h-full flex flex-col gap-4"
-        style={{
-          borderColor: 'rgba(59,130,246,0.3)',
-          backgroundImage: 'radial-gradient(120% 90% at 100% 0%, rgba(59,130,246,0.14) 0%, transparent 60%)',
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl shrink-0 grid place-items-center"
-            style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)', boxShadow: '0 0 18px -4px rgba(59,130,246,0.6)' }}>
-            <Sparkles className="w-5 h-5" style={{ color: '#06060a' }} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-[15px] font-extrabold text-text-primary">הסוכן שלך</h2>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-hover">AI</span>
+      <section className="panel agent" aria-labelledby="agentTitle">
+        <div className="agent__head">
+          <span className="agent__mark" aria-hidden><Sparkles className="w-5 h-5" /></span>
+          <div>
+            <div className="agent__title-row">
+              <h2 className="agent__title" id="agentTitle">הסוכן שלך</h2>
+              <span className="chip chip--accent">AI</span>
             </div>
-            <div className="text-xs text-text-secondary mt-0.5">ממתין לעסקאות סגורות</div>
+            <div className="agent__sub">ממתין לעסקאות סגורות</div>
           </div>
         </div>
-        <p className="text-[15px] leading-relaxed text-text-primary/90">
+        <p className="agent__headline">
           הסוכן קורא את היומן שלך ומסמן איפה הכסף נכנס ואיפה הוא יוצא. ברגע שתסגור את העסקה הראשונה יופיעו כאן הממצאים — הזוג הכי רווחי, הזוג הכי יקר, ולונג מול שורט.
         </p>
-        <button
-          onClick={() => navigate('/journal?new=1')}
-          className="mt-auto h-11 w-full inline-flex items-center justify-center gap-2 rounded-xl text-sm font-bold bg-accent-primary/15 border border-accent-primary/35 text-accent-hover hover:bg-accent-primary/25 transition-colors cursor-pointer"
-        >
+        <button type="button" onClick={() => navigate('/journal?new=1')} className="btn btn--outline agent__cta">
           הוסף עסקה ראשונה <ArrowLeft className="w-4 h-4" />
         </button>
-      </div>
+      </section>
     );
   }
 
   return (
-    <div
-      className="relative overflow-hidden rounded-2xl p-4 md:p-5 border bg-bg-secondary h-full flex flex-col gap-4"
-      style={{
-        borderColor: 'rgba(59,130,246,0.3)',
-        backgroundImage: 'radial-gradient(120% 90% at 100% 0%, rgba(59,130,246,0.14) 0%, transparent 60%)',
-      }}
-    >
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl shrink-0 grid place-items-center"
-          style={{ background: 'linear-gradient(135deg, #2563eb 0%, #38bdf8 100%)', boxShadow: '0 0 18px -4px rgba(59,130,246,0.6)' }}>
-          <Sparkles className="w-5 h-5" style={{ color: '#06060a' }} />
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="text-[15px] font-extrabold text-text-primary">הסוכן שלך</h2>
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-hover">AI</span>
+    <section className="panel agent" aria-labelledby="agentTitle">
+      <div className="agent__head">
+        <span className="agent__mark" aria-hidden><Sparkles className="w-5 h-5" /></span>
+        <div>
+          <div className="agent__title-row">
+            <h2 className="agent__title" id="agentTitle">הסוכן שלך</h2>
+            <span className="chip chip--accent">AI</span>
           </div>
-          <div className="text-xs text-text-secondary mt-0.5">ניתוח {a.total} העסקאות שלך</div>
+          <div className="agent__sub">ניתוח {a.total} העסקאות שלך</div>
         </div>
       </div>
-
-      {/* The one thing that matters most right now. */}
-      <p className="text-[15px] leading-relaxed text-text-primary/90">{a.headline}</p>
-
-      {/* The findings behind it. */}
+      <p className="agent__headline">{a.headline}</p>
       {a.rows.length > 0 && (
-        <div className="rounded-xl bg-bg-tertiary border border-border-primary px-3">
+        <div className="agent__findings">
           {a.rows.map((r) => (
-            <div key={r.key} className="flex items-center gap-3 py-2.5 border-t border-border-primary/70 first:border-t-0">
-              <span className="w-8 h-8 rounded-lg bg-bg-secondary border border-border-primary grid place-items-center shrink-0">
-                {r.pair ? <CoinIcon pair={r.pair} className="w-5 h-5" /> : r.Icon && <r.Icon className={`w-4 h-4 ${TONE[r.tone]}`} />}
+            <div key={r.key} className="finding">
+              <span className="finding__label">{r.label}</span>
+              <span className={`finding__value ${TONE[r.tone] || ''}`}>
+                {r.pair ? <CoinIcon pair={r.pair} className="w-4 h-4" /> : r.Icon && <r.Icon className="w-4 h-4" />}
+                <span dir={r.pair ? 'ltr' : undefined}>{r.pair || r.value}</span>
+                {r.pair && <span className="num" dir="ltr">{r.value}</span>}
               </span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-xs text-text-secondary">{r.label}</span>
-                <span className="block text-sm font-semibold text-text-primary truncate" dir={r.pair ? 'ltr' : undefined} style={r.pair ? { textAlign: 'right' } : undefined}>
-                  {r.pair || r.value}
-                </span>
-              </span>
-              <span className="text-left shrink-0">
-                {r.pair && <span className={`block num-mono text-sm font-bold ${TONE[r.tone]}`} dir="ltr">{r.value}</span>}
-                <span className="block text-[11px] text-text-secondary">{r.sub}</span>
-              </span>
+              <span className="finding__sub">{r.sub}</span>
             </div>
           ))}
         </div>
       )}
-
       <button
-        // TradeAI is the AI destination: it opens on this same book, and from
-        // there the trader can reach the chat, the chart reader and the analyst.
+        type="button"
         onClick={() => navigate('/trade-ai')}
-        className="mt-auto h-11 w-full inline-flex items-center justify-center gap-2 rounded-xl text-sm font-bold bg-accent-primary/15 border border-accent-primary/35 text-accent-hover hover:bg-accent-primary/25 transition-colors cursor-pointer"
+        className="btn btn--outline agent__cta"
       >
         ניתוח מלא עם AI <ArrowLeft className="w-4 h-4" />
       </button>
-    </div>
+    </section>
   );
 }
