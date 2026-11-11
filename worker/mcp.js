@@ -6,7 +6,7 @@
 // No session id and no SSE stream. GET and DELETE are 405. POST is one
 // JSON-RPC message. Notifications get 202. Tool failures are isError results.
 
-import { authorizeApi, createTrade, deleteTrade, journalStats, listJournals, listTrades, updateTrade } from './publicApi.js';
+import { authorizeApi, createTrade, deleteTrade, getPlan, journalStats, listJournals, listPlans, listTrades, updateTrade } from './publicApi.js';
 
 const PROTOCOL_VERSIONS = ['2025-03-26', '2025-06-18', '2025-11-25'];
 const PREFERRED_PROTOCOL = '2025-11-25';
@@ -14,12 +14,18 @@ const PREFERRED_PROTOCOL = '2025-11-25';
 const TOOLS = [
   {
     name: 'list_journals',
-    description: 'List the journals (accounts) owned by the API key. Each row has id, name, and exchange (the broker, for example MEXC or Bybit), plus assetClass, currency, initialBalance, archived, starred, and isDefault. Use id or name with add_trade, update_trade, list_trades, get_stats, and delete_trade. Omitting a journal elsewhere does not pick one of these for you.',
-    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+    description: 'List the journals owned by the API key, live accounts and backtest journals. Each row has id, name, type (live or backtest), and isBacktest. Live rows also have exchange (the broker, for example MEXC or Bybit), assetClass, currency, initialBalance, archived, starred, and isDefault. Backtest rows have no broker: exchange is empty, assetClass and initialBalance are null, and description, createdAt, and updatedAt are included. Optional type is live or backtest; omit it to list both. Use id or name with list_trades and get_stats. add_trade, update_trade, and delete_trade accept live journals only. Omitting a journal elsewhere does not pick one of these for you.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        type: { type: 'string', enum: ['live', 'backtest'], description: 'Omit to list live and backtest journals. live is the trading accounts. backtest is the backtest journals.' },
+      },
+    },
   },
   {
     name: 'add_trade',
-    description: 'Add one trade to a journal owned by the API key. Validation and stored fields match POST /api/v1/trades: pnl, netPnl, pnlPercent, result, position size, margin, and a derived risk amount when entry, stop, and size can price it. P&L is computed from prices and fees. pnlFromExchange is not accepted. Only the properties listed in this schema are accepted. Pass journalId or journal (the journal name, or its id). One of them is required — omitting both is rejected and does not guess a journal. Also required: pair, direction (long or short), entryPrice, quantity. status may be omitted — an exit price closes the trade, partial exits become partial, otherwise the trade stays open. fees default to 0 and leverage to 1 (crypto and stocks). Futures (assetClass futures_cme) need contract.contracts, contract.pointValue, and contract.tickSize. Optional custom is an object of field id to string or number, checked against the user\'s settings/customTradeFields definitions. Unknown ids and values that do not match a field are rejected. Omit custom for a trade with no answers. Pass idempotencyKey (8–128 printable characters) to make a retry return the original trade instead of writing another one. A shared journal does not include custom.',
+    description: 'Add one trade to a live journal owned by the API key. Backtest journals are read-only: a backtest journal id or name is not found and nothing is written. Validation and stored fields match POST /api/v1/trades: pnl, netPnl, pnlPercent, result, position size, margin, and a derived risk amount when entry, stop, and size can price it. P&L is computed from prices and fees. pnlFromExchange is not accepted. Only the properties listed in this schema are accepted. Pass journalId or journal (the journal name, or its id). One of them is required — omitting both is rejected and does not guess a journal. Also required: pair, direction (long or short), entryPrice, quantity. status may be omitted — an exit price closes the trade, partial exits become partial, otherwise the trade stays open. fees default to 0 and leverage to 1 (crypto and stocks). Futures (assetClass futures_cme) need contract.contracts, contract.pointValue, and contract.tickSize. Optional custom is an object of field id to string or number, checked against the user\'s settings/customTradeFields definitions. Unknown ids and values that do not match a field are rejected. Omit custom for a trade with no answers. Pass idempotencyKey (8–128 printable characters) to make a retry return the original trade instead of writing another one. A shared journal does not include custom.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -66,7 +72,7 @@ const TOOLS = [
   },
   {
     name: 'update_trade',
-    description: 'Update one trade owned by the API key. Same checks as PATCH /api/v1/trades/{id}. id is required. Every other argument is optional and partial: omitted fields stay as stored. Only the properties listed here are accepted. id and createdAt cannot be changed. Sending no field besides id is rejected. Validation matches add_trade (types, ranges, futures contract). The Worker recomputes pnl, netPnl, pnlPercent, result, position size, margin, and R from the merged trade, and sets updatedAt. Another user\'s id is not found. Pass journalId or journal only when moving the trade to another journal you own. custom replaces the whole answer map and is checked against the user\'s defined fields. Omit custom to keep the stored answers. {} clears them. A shared journal does not include custom.',
+    description: 'Update one live trade owned by the API key. Same checks as PATCH /api/v1/trades/{id}. Backtest trades are read-only: a backtest trade id is not found and is not modified. id is required. Every other argument is optional and partial: omitted fields stay as stored. Only the properties listed here are accepted. id and createdAt cannot be changed. Sending no field besides id is rejected. Validation matches add_trade (types, ranges, futures contract). The Worker recomputes pnl, netPnl, pnlPercent, result, position size, margin, and R from the merged trade, and sets updatedAt. Another user\'s id is not found. Pass journalId or journal only when moving the trade to another live journal you own. A backtest journal is not a valid destination. custom replaces the whole answer map and is checked against the user\'s defined fields. Omit custom to keep the stored answers. {} clears them. A shared journal does not include custom.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -113,13 +119,14 @@ const TOOLS = [
   },
   {
     name: 'list_trades',
-    description: 'List the caller\'s trades, newest entryDate first. The same entryDate ties break by document id in that same direction. Set order to "asc" for oldest first (id ascending on a tie). Optional filters: journalId or journal (name or id of a journal the key owner owns), status (open, closed, or partial), pair, direction (long or short), from, and to. Omitting the journal filter lists every journal, same as before. from and to filter the entry date (ISO-8601 or YYYY-MM-DD). limit is 1–100 and defaults to 50. Pass the previous nextCursor as cursor to read the next page; the cursor is only valid for the same filters and order. Trades with no entryDate are omitted. Each trade includes custom when that trade has answers, and omits the field when it does not. A shared journal does not include custom; this list is only the key owner\'s trades.',
+    description: 'List the caller\'s trades. Live trades are newest entryDate first. The same entryDate ties break by document id in that same direction. Set order to "asc" for oldest first (id ascending on a tie). Optional filters: journalId or journal (name or id of a journal the key owner owns), status (open, closed, or partial), pair, direction (long or short), from, to, and type (live or backtest). Omitting type and the journal filter lists live trades only, same as before. Pass a backtest journal id, or type=backtest, to read that owner\'s backtest trades (users/{uid}/backtests). Backtest rows are ordered by date (createdAt when date is missing), undated rows last, and include the stored fields: strategy (setup), trigger, session, stopDistancePct (stop distance, percent), rResult (R), maxR (Max R), result, timeframe, notes, and chart URLs. There is no stored tags field and no stored 3R field on a backtest trade. status does not apply to backtest trades. from and to filter the entry date for live trades and the backtest date for backtest trades (ISO-8601 or YYYY-MM-DD). limit is 1–100 and defaults to 50. Pass the previous nextCursor as cursor to read the next page; the cursor is only valid for the same filters and order. Live trades with no entryDate are omitted. Each live trade includes custom when that trade has answers, and omits the field when it does not. A shared journal does not include custom; this list is only the key owner\'s trades.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
       properties: {
         journalId: { type: 'string' },
-        journal: { type: 'string', description: 'Journal name or id. Limits the list to that account. Omit to list every journal.' },
+        journal: { type: 'string', description: 'Journal name or id. A backtest journal id returns that journal\'s backtest trades. Omit, with no type, to list live trades from every account.' },
+        type: { type: 'string', enum: ['live', 'backtest'], description: 'live lists live trades. backtest lists backtest trades. Omit to keep live trades unless journalId is a backtest journal.' },
         status: { type: 'string', enum: ['open', 'closed', 'partial'] },
         pair: { type: 'string' },
         direction: { type: 'string', enum: ['long', 'short'] },
@@ -133,7 +140,7 @@ const TOOLS = [
   },
   {
     name: 'delete_trade',
-    description: 'Delete one trade owned by the API key. id is the trade id from add_trade or list_trades. The trade must live under that user — another user\'s id is not found. Screenshot docs for the trade are removed too. Stats and balances are computed from the trades that remain, the same way the journal screen updates after a delete. There is no separate aggregate to patch.',
+    description: 'Delete one live trade owned by the API key. id is the trade id from add_trade or list_trades. Backtest trades are read-only: a backtest trade id is not found and is not deleted. The trade must live under that user — another user\'s id is not found. Screenshot docs for the trade are removed too. Stats and balances are computed from the trades that remain, the same way the journal screen updates after a delete. There is no separate aggregate to patch.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -145,7 +152,7 @@ const TOOLS = [
   },
   {
     name: 'get_stats',
-    description: 'Journal performance for one journal, matching GET /api/v1/stats and the dashboard. Pass journalId or journal (name or id). One of them is required — omitting both is rejected and does not combine journals. period is all (default), week, month, or year. from and to, when set, replace period. Returns counts, win rate (breakevens excluded), net P&L, opening and current balance, return percent on the equity the period opened at (null when the journal has no opening balance), summed dollar risk, profit factor, expectancy, average R, and max drawdown. truncated is true when the journal has more than 5000 trades. Deleting a trade changes the next result, because stats are summed from the remaining trades.',
+    description: 'Performance for one journal, matching GET /api/v1/stats. Pass journalId or journal (name or id) of a live journal or a backtest journal. One of them is required — omitting both is rejected and does not combine journals. period is all (default), week, month, or year. from and to, when set, replace period. A live journal returns counts, win rate (breakevens excluded), net P&L, opening and current balance, return percent on the equity the period opened at (null when the journal has no opening balance), summed dollar risk, profit factor, expectancy, average R, and max drawdown. A backtest journal returns the same counts and win rate from result, with avgR, totalR, bestR, and worstR from rResult, and an R profit factor. Dollar fields (totalPnl, balances, returnPercent, riskAmount) are null because a backtest trade does not store dollar P&L. type and isBacktest say which kind was read. truncated is true when more than 5000 trades were scanned. Deleting a live trade changes the next live result, because stats are summed from the trades that remain. Backtest trades cannot be deleted here.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -155,6 +162,23 @@ const TOOLS = [
         period: { type: 'string', enum: ['all', 'week', 'month', 'year'] },
         from: { type: 'string', description: 'ISO-8601 or YYYY-MM-DD. Replaces period when set.' },
         to: { type: 'string', description: 'ISO-8601 or YYYY-MM-DD. Replaces period when set.' },
+      },
+    },
+  },
+  {
+    name: 'list_plans',
+    description: 'List the trading plans owned by the API key. Read-only. Each row is a summary: id, name, description, isActive, color, pairs, timeframes, sessions, maxDailyLoss, maxPositions, createdAt, and updatedAt. Active plans come first, then name. Use id with get_plan for the full stored document (rules, risk, sessions, checklist). There is no write tool for plans.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+  },
+  {
+    name: 'get_plan',
+    description: 'Read one trading plan owned by the API key. id is the plan id from list_plans. The plan object is the stored document: name, description, entryRules, exitRules, riskManagement, goals, notes, pairs, timeframes, sessions, maxDailyLoss, maxPositions, checklist, mistakesToAvoid, marketConditions, dailyRoutine, tradeManagement, tradeExamples, color, isActive, createdAt, updatedAt, and any other field saved on that document. Another user\'s id is not found. Read-only.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['id'],
+      properties: {
+        id: { type: 'string', minLength: 1, maxLength: 128, description: 'Plan id from list_plans.' },
       },
     },
   },
@@ -248,16 +272,20 @@ async function callTool(params, ctx) {
       path: `/api/v1/trades/${encodeURIComponent(id)}`,
     }), ctx));
   }
-  if (name === 'list_journals') return asTool(await listJournals(ctx));
+  if (name === 'list_journals') {
+    return asTool(await listJournals(ctx, queryUrl('/api/v1/journals', args, ['type'])));
+  }
   if (name === 'list_trades') {
     return asTool(await listTrades(queryUrl('/api/v1/trades', args, [
-      'journalId', 'journal', 'status', 'pair', 'direction', 'from', 'to', 'limit', 'cursor', 'order',
+      'journalId', 'journal', 'type', 'status', 'pair', 'direction', 'from', 'to', 'limit', 'cursor', 'order',
     ]), ctx));
   }
   if (name === 'delete_trade') return asTool(await deleteTrade(typeof args.id === 'string' ? args.id : '', ctx));
   if (name === 'get_stats') {
     return asTool(await journalStats(queryUrl('/api/v1/stats', args, ['journalId', 'journal', 'period', 'from', 'to']), ctx));
   }
+  if (name === 'list_plans') return asTool(await listPlans(ctx));
+  if (name === 'get_plan') return asTool(await getPlan(typeof args.id === 'string' ? args.id : '', ctx));
   return toolError(`unknown tool: ${name}`);
 }
 
@@ -267,7 +295,7 @@ function initializeResult(params) {
     protocolVersion: PROTOCOL_VERSIONS.includes(requested) ? requested : PREFERRED_PROTOCOL,
     capabilities: { tools: { listChanged: false } },
     serverInfo: { name: 'tradeos', title: 'TradeOS', version: '1.0.0' },
-    instructions: 'TradeOS journal tools for the signed-in API key. list_journals returns id, name, and exchange. add_trade writes one trade to journalId or journal (optional idempotencyKey); omitting both is rejected. custom, when sent, is checked against settings/customTradeFields. update_trade patches one trade by id and recomputes P&L; id and createdAt stay as stored; omit custom to keep stored answers. list_trades returns newest entryDate first unless order is asc, includes custom only when a trade has answers, and lists every journal when no journal filter is passed. A shared journal never includes custom. delete_trade removes one trade by id. get_stats is one journal, by journalId or journal. Dates are ISO-8601.',
+    instructions: 'TradeOS journal tools for the signed-in API key. list_journals returns live and backtest journals (type, isBacktest, id, name; live rows also include exchange). Optional type is live or backtest. add_trade writes one live trade to journalId or journal (optional idempotencyKey); omitting both is rejected. Backtest journals are read-only. custom, when sent, is checked against settings/customTradeFields. update_trade patches one live trade by id and recomputes P&L; id and createdAt stay as stored; omit custom to keep stored answers. list_trades returns newest entryDate first unless order is asc, includes custom only when a live trade has answers, and lists live trades when no journal filter and no type are passed. Pass a backtest journal id or type=backtest for backtest trades (strategy, session, stopDistancePct, rResult, maxR). A shared journal never includes custom. delete_trade removes one live trade by id and does not delete backtest trades. get_stats is one live or backtest journal, by journalId or journal. list_plans and get_plan read trading plans and do not write them. Dates are ISO-8601.',
   };
 }
 

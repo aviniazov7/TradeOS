@@ -48,17 +48,117 @@ curl -s -X DELETE https://trade-os.tradeos.workers.dev/api/v1/keys/$KEY_ID \
 
 ## GET /api/v1/journals
 
-Lists the journals (accounts) owned by the caller. Each row has `id`, `name`, and `exchange` — the broker, such as `MEXC`, `bybit`, or `Vantage` — plus `assetClass`, `currency`, `initialBalance`, `archived`, `starred`, and `isDefault`. Starred journals come first, then name. An empty account list is `{ "journals": [] }`.
+Lists the journals owned by the caller: live trading accounts and backtest journals. Starred rows come first, then name. An empty list is `{ "journals": [] }`.
 
-Journals are read with a collection list under `users/{uid}/journals`. No composite index is required. Another user's journals are not included.
+Every row has `id`, `name`, `type` (`"live"` or `"backtest"`), and `isBacktest` (boolean). Live rows are otherwise unchanged: `exchange` (the broker, such as `MEXC`, `bybit`, or `Vantage`), `assetClass`, `currency`, `initialBalance`, `archived`, `starred`, and `isDefault`. `type` and `isBacktest` are the only fields added to a live row.
+
+A backtest row uses the same keys so a client can render one list. It has no broker and no opening balance, so `exchange` and `currency` are `""`, `assetClass` and `initialBalance` are `null`, and `archived` and `starred` are `false`. `isDefault` is the stored flag. The row also includes `description`, `createdAt`, and `updatedAt`. Strategy text (entry rules, checklist, chart examples) stays in the app and is not on this list.
+
+Optional `type` is `live` or `backtest`. Omit it to return both. Any other value is `400` (`type must be live or backtest`). `includeArchived` and `mode` are not filters: archived live journals are already included (`archived: true`), and backtest journals have no archive flag.
+
+Live journals are a collection list under `users/{uid}/journals`. Backtest journals are a collection list under `users/{uid}/backtestJournals`. No composite index is required. Another user's journals are not included. There is no write API for backtest journals. `GET /api/v1/backtests` and `GET /api/v1/backtest/journals` stay `405`.
 
 ```bash
 curl -s https://trade-os.tradeos.workers.dev/api/v1/journals \
   -H "Authorization: Bearer $API_KEY"
+
+curl -s "https://trade-os.tradeos.workers.dev/api/v1/journals?type=backtest" \
+  -H "Authorization: Bearer $API_KEY"
 ```
 
 ```json
-{ "journals": [ { "id": "JOURNAL_ID", "name": "MEXC", "exchange": "MEXC", "initialBalance": 1000, "starred": true } ] }
+{
+  "journals": [
+    { "id": "JOURNAL_ID", "name": "MEXC", "exchange": "MEXC", "initialBalance": 1000, "starred": true, "type": "live", "isBacktest": false },
+    {
+      "id": "BACKTEST_JOURNAL_ID",
+      "name": "BTC backtest",
+      "exchange": "",
+      "assetClass": null,
+      "currency": "",
+      "initialBalance": null,
+      "archived": false,
+      "starred": false,
+      "isDefault": true,
+      "type": "backtest",
+      "isBacktest": true,
+      "description": "trendline",
+      "createdAt": "2026-05-01T00:00:00.000Z",
+      "updatedAt": "2026-06-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+## GET /api/v1/plans
+
+Lists the trading plans stored at `users/{uid}/tradingPlans`. Read-only. Active plans come first, then name. Another user's plans are not included. An empty list is `{ "plans": [] }`.
+
+Each row is a summary: `id`, `name`, `description`, `isActive`, `color`, `pairs`, `timeframes`, `sessions`, `maxDailyLoss`, `maxPositions`, `createdAt`, `updatedAt`. The long rule text is on `GET /api/v1/plans/{id}`.
+
+`POST`, `PATCH`, and `DELETE` are `405`. No composite index is required.
+
+```bash
+curl -s https://trade-os.tradeos.workers.dev/api/v1/plans \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+```json
+{
+  "plans": [
+    {
+      "id": "PLAN_ID",
+      "name": "London ORB",
+      "description": "open drive",
+      "isActive": true,
+      "color": "#06b6d4",
+      "pairs": ["BTCUSDT"],
+      "timeframes": ["15m"],
+      "sessions": ["London"],
+      "maxDailyLoss": 3,
+      "maxPositions": 2,
+      "createdAt": "2026-06-01T00:00:00.000Z",
+      "updatedAt": "2026-06-02T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+## GET /api/v1/plans/{id}
+
+One plan the key owns, with every field stored on the document. A missing id and another user's id are both `404` (`plan not found`). `..` and a slash in the id are `400`.
+
+The plan form does not store a field named `setups`. The names people use map onto the stored fields like this:
+
+| Asked for | Stored field |
+|---|---|
+| Rules | `entryRules`, `exitRules`, `checklist`, `mistakesToAvoid` |
+| Risk | `riskManagement`, `maxDailyLoss`, `maxPositions` |
+| Sessions | `sessions` |
+| Setups | *(not stored)* — markets are `pairs` and `timeframes` |
+
+Also stored, and returned: `description`, `goals`, `notes`, `marketConditions`, `dailyRoutine`, `tradeManagement`, `tradeExamples` (`title`, `chartUrl`, `description`), `color`, `isActive`, `createdAt`, `updatedAt`, plus any older key still on the document.
+
+```bash
+curl -s https://trade-os.tradeos.workers.dev/api/v1/plans/PLAN_ID \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+```json
+{
+  "plan": {
+    "id": "PLAN_ID",
+    "name": "London ORB",
+    "entryRules": "wait for the range",
+    "exitRules": "first target",
+    "riskManagement": "1% per trade",
+    "sessions": ["London"],
+    "checklist": ["HTF bias"],
+    "mistakesToAvoid": ["revenge"],
+    "maxDailyLoss": 3,
+    "maxPositions": 2
+  }
+}
 ```
 
 ## POST /api/v1/trades
@@ -117,13 +217,68 @@ Trades with no `entryDate` are omitted. Firestore's `orderBy` skips documents th
 
 A trade that has custom-field answers includes `custom` (`{ "f1": "לונדון" }`). A trade without answers omits `custom`. That is the key owner's list. A shared journal still does not include `custom`.
 
+### Backtest trades
+
+`journalId` or `journal` may name a backtest journal. `type=backtest` lists the caller's backtest trades (every backtest journal when no journal is passed). `type=live` is the live list. Omitting `type` and the journal filter stays the live list above, so existing clients keep the same pages.
+
+Backtest trades are read from `users/{uid}/backtests`, where the app stores them, and kept when `backtestJournalId` equals that journal. The scan is the same document-id walk as `GET /api/v1/stats` (no composite index), then the page is ordered by `date` (`createdAt` when `date` is missing). Undated rows are last. The same timestamp ties break by document id, in the same direction as `order`. `from` / `to` filter that date. `pair` and `direction` filter the stored values. `status` does not apply (`400`, `status does not apply to backtest trades`). A backtest journal with `type=live`, or a live journal with `type=backtest`, is `400` (`journal type does not match type filter`).
+
+A backtest row is the stored document plus `id`, `type: "backtest"`, `isBacktest: true`, and `journalId`. `journalId` repeats `backtestJournalId` so it matches the query. The response also includes `truncated` (`true` when the scan stopped at 5000 documents) and `nextCursor`.
+
+The names used in the product map onto the fields the backtest screen writes:
+
+| Product | Stored field | Meaning |
+|---|---|---|
+| Setup | `strategy` | Strategy name. The entry trigger is the separate field `trigger`. |
+| Session | `session` | `Asia`, `London`, `London/NY Overlap`, `New York`, or a custom session. |
+| Stop distance | `stopDistancePct` | Stop distance as a percent of price, not a price delta. |
+| R | `rResult` | Final R of the trade. |
+| Max R | `maxR` | Highest R reached before the close. |
+| 3R result | *(not stored)* | There is no 3R column. The trade reached 3R when `maxR >= 3`. |
+| Tags | *(not stored)* | Live trades store `tags`. A backtest document does not. |
+
+Other stored fields are returned as well: `pair`, `direction`, `timeframe`, `result` (`win`, `loss`, or `breakeven`), `date`, `notes`, `entryChartUrl`, `managementChartUrl`, `createdAt`, `updatedAt`, and any older keys still on the document (for example `screenshots`). `POST`, `PATCH`, and `DELETE` do not accept a backtest journal or a backtest trade. Those ids are `404` and the backtest document is left as it is.
+
 ```bash
 curl -s "https://trade-os.tradeos.workers.dev/api/v1/trades?journalId=JOURNAL_ID&status=closed&from=2026-06-01&to=2026-06-30&limit=50" \
+  -H "Authorization: Bearer $API_KEY"
+
+curl -s "https://trade-os.tradeos.workers.dev/api/v1/trades?journalId=BACKTEST_JOURNAL_ID&limit=50" \
   -H "Authorization: Bearer $API_KEY"
 ```
 
 ```json
 { "trades": [ { "id": "…", "pair": "BTCUSDT", "netPnl": 4.5 } ], "nextCursor": null }
+```
+
+```json
+{
+  "trades": [
+    {
+      "id": "BACKTEST_TRADE_ID",
+      "backtestJournalId": "BACKTEST_JOURNAL_ID",
+      "journalId": "BACKTEST_JOURNAL_ID",
+      "type": "backtest",
+      "isBacktest": true,
+      "pair": "BTCUSDT",
+      "direction": "long",
+      "strategy": "Trendline Break",
+      "trigger": "CHoCH",
+      "timeframe": "4H",
+      "session": "London",
+      "date": "2026-06-02T13:00:00.000Z",
+      "stopDistancePct": 0.9,
+      "maxR": 5.7,
+      "rResult": 2.4,
+      "result": "win",
+      "notes": "retest",
+      "entryChartUrl": "https://charts.example/entry",
+      "managementChartUrl": ""
+    }
+  ],
+  "nextCursor": null,
+  "truncated": false
+}
 ```
 
 Pass `cursor` from the previous response to read the next page. A list with no equality filter uses the automatic single-field index on `entryDate`. Filtering by `journalId`, `status`, `pair`, or `direction` needs the composite indexes in `firestore.indexes.json` (one per filter field, both directions). Firestore merges those indexes when a query uses more than one equality. The document-id tie-break is the same direction as `entryDate`, so `__name__` is not an extra index field. `GET /api/v1/stats` still walks trades by document id and does not need these indexes.
@@ -172,16 +327,23 @@ curl -s -X DELETE https://trade-os.tradeos.workers.dev/api/v1/trades/TRADE_ID \
 
 ## GET /api/v1/stats
 
-Pass `journalId` or `journal` (name or id). One of them is required. Omitting both is `400` with `journalId is required` — stats are not combined across journals. `period` is `all` (default), `week`, `month`, or `year` — the same windows as the dashboard. `from` and `to`, when set, replace `period`.
+Pass `journalId` or `journal` (name or id) of a live journal or a backtest journal. One of them is required. Omitting both is `400` with `journalId is required` — stats are not combined across journals. A name that matches one live journal and one backtest journal is `409`. The same document id in both collections is `409` (`journal id is ambiguous`); a write still targets the live journal only. `period` is `all` (default), `week`, `month`, or `year` — the same windows as the dashboard. `from` and `to`, when set, replace `period`.
+
+A live journal is unchanged apart from two added fields, `type: "live"` and `isBacktest: false`. A backtest journal reads `users/{uid}/backtests` for that `backtestJournalId` and scores `result` and `rResult` the way the backtest screen does. Dollar fields are `null` (a backtest trade does not store P&L or a balance). `counts.closed` equals `counts.total` because a backtest row has no open or partial status. `winRate` excludes breakevens. `avgR` is the mean of `rResult` (a missing value counts as 0) and is `null` when the window has no trades. `totalR`, `bestR`, and `worstR` are that same R. `profitFactor` is the screen's R profit factor (sum of positive `rResult` divided by the absolute sum of negative `rResult`), not a dollar profit factor. `maxDrawdownR` is the peak-to-trough of cumulative `rResult` in date order. `maxDrawdown` and `maxDrawdownAmount` stay `null`. The per-strategy, session, pair, and timeframe tables on the backtest screen are not in this object.
 
 ```bash
 curl -s "https://trade-os.tradeos.workers.dev/api/v1/stats?journalId=JOURNAL_ID&period=month" \
+  -H "Authorization: Bearer $API_KEY"
+
+curl -s "https://trade-os.tradeos.workers.dev/api/v1/stats?journalId=BACKTEST_JOURNAL_ID&period=all" \
   -H "Authorization: Bearer $API_KEY"
 ```
 
 ```json
 {
   "journalId": "JOURNAL_ID",
+  "type": "live",
+  "isBacktest": false,
   "period": "month",
   "initialBalance": 1000,
   "counts": { "total": 12, "closed": 10, "open": 2, "partial": 0, "wins": 6, "losses": 3, "breakeven": 1 },
@@ -207,6 +369,40 @@ curl -s "https://trade-os.tradeos.workers.dev/api/v1/stats?journalId=JOURNAL_ID&
 - `winRate` excludes breakevens, matching the dashboard.
 - `maxDrawdown` is a percent of account equity, or `null` without an opening balance. `maxDrawdownAmount` is the dollar drawdown either way.
 - `truncated` is true if the journal has more than 5000 trades and the stats used the first 5000.
+
+Backtest example:
+
+```json
+{
+  "journalId": "BACKTEST_JOURNAL_ID",
+  "type": "backtest",
+  "isBacktest": true,
+  "period": "all",
+  "from": null,
+  "to": null,
+  "initialBalance": null,
+  "counts": { "total": 3, "closed": 3, "open": 0, "partial": 0, "wins": 1, "losses": 1, "breakeven": 1 },
+  "winRate": 50,
+  "totalPnl": null,
+  "totalR": 1,
+  "startBalance": null,
+  "currentBalance": null,
+  "returnPercent": null,
+  "riskAmount": null,
+  "profitFactor": 2,
+  "profitFactorInfinite": false,
+  "expectancy": null,
+  "avgR": 0.333,
+  "bestR": 2,
+  "worstR": -1,
+  "maxWinStreak": 1,
+  "maxLossStreak": 1,
+  "maxDrawdown": null,
+  "maxDrawdownAmount": null,
+  "maxDrawdownR": 1,
+  "truncated": false
+}
+```
 
 ## Local test
 
@@ -240,6 +436,6 @@ This PR does not deploy.
 
    Wait until each new `trades` index shows Enabled in the Firebase console. Until then, `GET /api/v1/trades` with `journalId`, `status`, `pair`, or `direction` fails (the Worker logs a Firestore `FAILED_PRECONDITION`). An unfiltered list and `GET /api/v1/stats` work without these indexes. If a combined filter still asks for an index, create the exact composite from that error. The eight `trades` indexes in `firestore.indexes.json` are the ones index merging needs (each equality field with `entryDate`, ascending and descending).
 
-3. The Worker and hosting deploy from GitHub Actions when the commit reaches `main`. Only `main` deploys the Workers. No new secret is required. The MCP route is the same Worker: `https://trade-os.tradeos.workers.dev/mcp`. Listing journals, matching a journal by name, and deleting a trade do not add a Firestore index: journals are a collection list, the name is matched in the Worker, and delete is a single document.
+3. The Worker and hosting deploy from GitHub Actions when the commit reaches `main`. Only `main` deploys the Workers. No new secret is required. The MCP route is the same Worker: `https://trade-os.tradeos.workers.dev/mcp`. Listing journals, matching a journal by name, and deleting a trade do not add a Firestore index: journals and backtest journals are collection lists, the name is matched in the Worker, and delete is a single document. Backtest trades are paged by document id with an equality on `backtestJournalId`, the same shape as the stats scan, so they do not add a composite index either. No Firestore migration is required.
 
 4. No `wrangler deploy` from a laptop. The local Wrangler login is the personal Cloudflare account, which does not own `trade-os`.

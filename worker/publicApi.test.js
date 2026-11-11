@@ -650,6 +650,329 @@ describe('public API v1', () => {
     expect(decodeFields(db.docs.get(`users/user1/trades/${payload.id}`)).fees).toBe(3);
   });
 
+  it('lists live and backtest journals and filters by type', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/mexc', encodeFields({
+      name: 'MEXC', exchange: 'MEXC', assetClass: 'crypto', currency: 'USDT',
+      initialBalance: 1000, starred: true, archived: false, isDefault: true,
+    }));
+    db.put('users/user1/journals/old', encodeFields({
+      name: 'Old', exchange: 'bybit', archived: true, initialBalance: 50,
+    }));
+    db.put('users/user1/backtestJournals/bj1', encodeFields({
+      name: 'BTC backtest', description: 'trendline', isDefault: true,
+      createdAt: new Date('2026-05-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-06-01T00:00:00.000Z'),
+    }));
+    db.put('users/user2/backtestJournals/theirs', encodeFields({ name: 'Theirs', description: 'secret' }));
+    db.put('users/user2/journals/theirs-live', encodeFields({ name: 'Theirs', exchange: 'MEXC' }));
+
+    const listed = await call('/api/v1/journals', { db });
+    expect(listed.status).toBe(200);
+    const body = await listed.json();
+    expect(body.journals.map((j) => j.id)).toEqual(['mexc', 'bj1', 'old']);
+    const live = body.journals.find((j) => j.id === 'mexc');
+    expect(Object.keys(live).sort()).toEqual([
+      'archived', 'assetClass', 'currency', 'exchange', 'id', 'initialBalance', 'isBacktest', 'isDefault', 'name', 'starred', 'type',
+    ]);
+    expect(live).toMatchObject({
+      type: 'live', isBacktest: false, exchange: 'MEXC', assetClass: 'crypto', initialBalance: 1000, starred: true,
+    });
+    expect(body.journals.find((j) => j.id === 'old')).toMatchObject({ type: 'live', archived: true, isBacktest: false });
+    expect(body.journals.find((j) => j.id === 'bj1')).toEqual({
+      id: 'bj1',
+      name: 'BTC backtest',
+      exchange: '',
+      assetClass: null,
+      currency: '',
+      initialBalance: null,
+      archived: false,
+      starred: false,
+      isDefault: true,
+      type: 'backtest',
+      isBacktest: true,
+      description: 'trendline',
+      createdAt: '2026-05-01T00:00:00.000Z',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+    });
+    expect(JSON.stringify(body)).not.toContain('user2');
+    expect(JSON.stringify(body)).not.toContain('secret');
+
+    const ignored = await call('/api/v1/journals?includeArchived=true&mode=backtest', { db });
+    expect((await ignored.json()).journals.map((j) => j.id)).toEqual(['mexc', 'bj1', 'old']);
+    const onlyBacktest = await call('/api/v1/journals?type=backtest', { db });
+    expect((await onlyBacktest.json()).journals.map((j) => j.id)).toEqual(['bj1']);
+    const onlyLive = await call('/api/v1/journals?type=live', { db });
+    expect((await onlyLive.json()).journals.map((j) => j.id)).toEqual(['mexc', 'old']);
+    const badType = await call('/api/v1/journals?type=paper', { db });
+    expect(badType.status).toBe(400);
+    expect((await badType.json()).error).toMatch(/type/);
+  });
+
+  it('reads one owner\'s backtest trades and refuses to write them', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', encodeFields({ name: 'MEXC', exchange: 'MEXC', initialBalance: 1000 }));
+    db.put('users/user1/backtestJournals/bj1', encodeFields({ name: 'BTC backtest', description: '' }));
+    db.put('users/user1/backtestJournals/bj2', encodeFields({ name: 'ETH backtest' }));
+    db.put('users/user1/trades/live-1', encodeFields({
+      journalId: 'j1', pair: 'ETHUSDT', direction: 'short', status: 'closed',
+      entryDate: new Date('2026-06-03T00:00:00.000Z'), netPnl: 4,
+    }));
+    db.put('users/user1/backtests/older', encodeFields({
+      backtestJournalId: 'bj1', pair: 'BTCUSDT', direction: 'long', strategy: 'Trendline Break',
+      trigger: 'CHoCH', timeframe: '4H', session: 'London', date: '2026-06-02T13:00:00.000Z',
+      maxR: 5.7, stopDistancePct: 0.9, rResult: 2.4, result: 'win', notes: 'retest',
+      entryChartUrl: 'https://charts.example/entry', managementChartUrl: '',
+      screenshots: ['https://charts.example/shot'],
+      createdAt: new Date('2026-06-02T13:05:00.000Z'),
+    }));
+    db.put('users/user1/backtests/newer', encodeFields({
+      backtestJournalId: 'bj1', pair: 'ETHUSDT', direction: 'short', strategy: 'ORB',
+      trigger: '', timeframe: '15m', session: 'New York', date: '2026-06-10T15:00:00.000Z',
+      maxR: 1.2, stopDistancePct: 0.4, rResult: -1, result: 'loss',
+    }));
+    db.put('users/user1/backtests/other-journal', encodeFields({
+      backtestJournalId: 'bj2', pair: 'SOLUSDT', direction: 'long', rResult: 3, result: 'win',
+      date: '2026-06-11T12:00:00.000Z', strategy: 'Breakout',
+    }));
+    db.put('users/user1/backtests/orphan', encodeFields({
+      pair: 'XRPUSDT', direction: 'long', rResult: 9, result: 'win', strategy: 'Loose',
+    }));
+    db.put('users/user2/backtestJournals/bj1', encodeFields({ name: 'Not yours' }));
+    db.put('users/user2/backtests/secret', encodeFields({
+      backtestJournalId: 'bj1', pair: 'BTCUSDT', direction: 'long', rResult: 99, result: 'win',
+      strategy: 'Secret', session: 'London',
+    }));
+
+    const liveList = await call('/api/v1/trades?limit=10', { db });
+    expect((await liveList.json()).trades.map((t) => t.id)).toEqual(['live-1']);
+
+    const page = await call('/api/v1/trades?journalId=bj1&limit=1', { db });
+    expect(page.status).toBe(200);
+    const first = await page.json();
+    expect(first.truncated).toBe(false);
+    expect(first.trades).toEqual([{
+      id: 'newer',
+      backtestJournalId: 'bj1',
+      journalId: 'bj1',
+      type: 'backtest',
+      isBacktest: true,
+      pair: 'ETHUSDT',
+      direction: 'short',
+      strategy: 'ORB',
+      trigger: '',
+      timeframe: '15m',
+      session: 'New York',
+      date: '2026-06-10T15:00:00.000Z',
+      maxR: 1.2,
+      stopDistancePct: 0.4,
+      rResult: -1,
+      result: 'loss',
+    }]);
+    expect(first.trades[0].tags).toBeUndefined();
+    expect(first.nextCursor).toBeTruthy();
+
+    const rest = await call(`/api/v1/trades?journalId=bj1&limit=1&cursor=${encodeURIComponent(first.nextCursor)}`, { db });
+    const second = await rest.json();
+    expect(second.trades.map((t) => t.id)).toEqual(['older']);
+    expect(second.trades[0]).toMatchObject({
+      strategy: 'Trendline Break',
+      trigger: 'CHoCH',
+      session: 'London',
+      stopDistancePct: 0.9,
+      rResult: 2.4,
+      maxR: 5.7,
+      notes: 'retest',
+      entryChartUrl: 'https://charts.example/entry',
+      managementChartUrl: '',
+      screenshots: ['https://charts.example/shot'],
+      type: 'backtest',
+      isBacktest: true,
+      journalId: 'bj1',
+    });
+    expect(second.nextCursor).toBeNull();
+
+    const byPair = await call('/api/v1/trades?journal=BTC%20backtest&pair=BTCUSDT&order=asc', { db });
+    expect((await byPair.json()).trades.map((t) => t.id)).toEqual(['older']);
+    const ranged = await call('/api/v1/trades?type=backtest&journalId=bj1&from=2026-06-01&to=2026-06-03', { db });
+    expect((await ranged.json()).trades.map((t) => t.id)).toEqual(['older']);
+    const allBacktests = await call('/api/v1/trades?type=backtest&limit=10', { db });
+    const allBody = await allBacktests.json();
+    expect(allBody.trades.map((t) => t.id).sort()).toEqual(['newer', 'older', 'other-journal']);
+    expect(JSON.stringify(allBody)).not.toContain('Secret');
+
+    const status = await call('/api/v1/trades?journalId=bj1&status=closed', { db });
+    expect(status.status).toBe(400);
+    expect((await status.json()).error).toMatch(/status/);
+    const mismatch = await call('/api/v1/trades?journalId=bj1&type=live', { db });
+    expect(mismatch.status).toBe(400);
+    const foreign = await call('/api/v1/trades?journalId=theirs', { db });
+    expect(foreign.status).toBe(404);
+    const noRoute = await call('/api/v1/backtests', { db });
+    expect(noRoute.status).toBe(405);
+
+    const before = [...db.docs.keys()].filter((key) => key.includes('backtest'));
+    const posted = await call('/api/v1/trades', { method: 'POST', db, body: { ...tradeBody, journalId: 'bj1' } });
+    expect(posted.status).toBe(404);
+    const patched = await call('/api/v1/trades/older', { method: 'PATCH', db, body: { notes: 'nope' } });
+    expect(patched.status).toBe(404);
+    const removed = await call('/api/v1/trades/older', { method: 'DELETE', db });
+    expect(removed.status).toBe(404);
+    expect([...db.docs.keys()].filter((key) => key.includes('backtest'))).toEqual(before);
+    expect(decodeFields(db.docs.get('users/user1/backtests/older')).notes).toBe('retest');
+    expect(db.docs.has('users/user2/backtests/secret')).toBe(true);
+  });
+
+  it('computes backtest stats for the owner and keeps live writes on a shared name', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', encodeFields({ name: 'Alpha', exchange: 'MEXC', initialBalance: 1000 }));
+    db.put('users/user1/backtestJournals/bj1', encodeFields({ name: 'Alpha', description: 'same name' }));
+    db.put('users/user1/backtestJournals/solo', encodeFields({ name: 'Solo' }));
+    db.put('users/user1/backtests/w', encodeFields({
+      backtestJournalId: 'bj1', date: '2026-06-02T12:00:00.000Z', rResult: 2, result: 'win', strategy: 'A',
+    }));
+    db.put('users/user1/backtests/l', encodeFields({
+      backtestJournalId: 'bj1', date: '2026-06-03T12:00:00.000Z', rResult: -1, result: 'loss', strategy: 'A',
+    }));
+    db.put('users/user1/backtests/b', encodeFields({
+      backtestJournalId: 'bj1', date: '2026-06-04T12:00:00.000Z', rResult: 0, result: 'breakeven', strategy: 'B',
+    }));
+    db.put('users/user1/backtests/old', encodeFields({
+      backtestJournalId: 'bj1', date: '2026-05-01T12:00:00.000Z', rResult: 10, result: 'win',
+    }));
+    db.put('users/user1/backtests/elsewhere', encodeFields({
+      backtestJournalId: 'solo', date: '2026-06-02T12:00:00.000Z', rResult: 4, result: 'win',
+    }));
+    db.put('users/user2/backtestJournals/bj1', encodeFields({ name: 'Alpha' }));
+    db.put('users/user2/backtests/secret', encodeFields({
+      backtestJournalId: 'bj1', rResult: 50, result: 'win', date: '2026-06-02T12:00:00.000Z',
+    }));
+
+    const ambiguous = await call('/api/v1/stats?journal=Alpha', { db });
+    expect(ambiguous.status).toBe(409);
+    const statsRes = await call('/api/v1/stats?journalId=bj1&from=2026-06-01&to=2026-06-30', { db });
+    expect(statsRes.status).toBe(200);
+    const stats = await statsRes.json();
+    expect(stats).toMatchObject({
+      journalId: 'bj1',
+      type: 'backtest',
+      isBacktest: true,
+      period: 'custom',
+      initialBalance: null,
+      totalPnl: null,
+      startBalance: null,
+      currentBalance: null,
+      returnPercent: null,
+      riskAmount: null,
+      expectancy: null,
+      maxDrawdown: null,
+      maxDrawdownAmount: null,
+      truncated: false,
+      counts: { total: 3, closed: 3, open: 0, partial: 0, wins: 1, losses: 1, breakeven: 1 },
+      profitFactorInfinite: false,
+      maxWinStreak: 1,
+      maxLossStreak: 1,
+    });
+    expect(stats.winRate).toBe(50);
+    expect(stats.totalR).toBe(1);
+    expect(stats.avgR).toBeCloseTo(1 / 3);
+    expect(stats.bestR).toBe(2);
+    expect(stats.worstR).toBe(-1);
+    expect(stats.profitFactor).toBe(2);
+    expect(stats.maxDrawdownR).toBe(1);
+
+    const named = await call('/api/v1/stats?journal=Solo&period=all', { db });
+    expect(named.status).toBe(200);
+    expect((await named.json()).journalId).toBe('solo');
+    const foreign = await call('/api/v1/stats?journalId=nope', { db });
+    expect(foreign.status).toBe(404);
+
+    const posted = await call('/api/v1/trades', {
+      method: 'POST', db, body: { ...tradeBody, journalId: 'j1', journal: 'Alpha' },
+    });
+    expect(posted.status).toBe(201);
+    expect((await posted.json()).trade.journalId).toBe('j1');
+    expect([...db.docs.keys()].filter((key) => key.startsWith('users/user1/backtests/')).sort()).toEqual([
+      'users/user1/backtests/b', 'users/user1/backtests/elsewhere', 'users/user1/backtests/l',
+      'users/user1/backtests/old', 'users/user1/backtests/w',
+    ]);
+
+    db.put('users/user1/journals/same', encodeFields({ name: 'Both', initialBalance: 10 }));
+    db.put('users/user1/backtestJournals/same', encodeFields({ name: 'Both journals' }));
+    const clash = await call('/api/v1/stats?journalId=same', { db });
+    expect(clash.status).toBe(409);
+    expect((await clash.json()).error).toMatch(/ambiguous/);
+  });
+
+  it('lists and reads the owner\'s trading plans and does not write them', async () => {
+    const db = memoryDb();
+    db.put('users/user1/tradingPlans/active', encodeFields({
+      name: 'London ORB',
+      description: 'open drive',
+      isActive: true,
+      color: '#06b6d4',
+      pairs: ['BTCUSDT'],
+      timeframes: ['15m'],
+      sessions: ['London'],
+      maxDailyLoss: 3,
+      maxPositions: 2,
+      entryRules: 'wait for the range',
+      exitRules: 'first target',
+      riskManagement: '1% per trade',
+      checklist: ['HTF bias'],
+      mistakesToAvoid: ['revenge'],
+      marketConditions: 'trend',
+      dailyRoutine: 'mark levels',
+      tradeManagement: 'move stop',
+      goals: 'consistency',
+      notes: 'skip news',
+      tradeExamples: [{ title: 'example', chartUrl: 'https://charts.example/p', description: 'clean' }],
+      createdAt: new Date('2026-06-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-06-02T00:00:00.000Z'),
+    }));
+    db.put('users/user1/tradingPlans/paused', encodeFields({
+      name: 'Swing', isActive: false, sessions: ['New York'], pairs: [],
+    }));
+    db.put('users/user2/tradingPlans/secret', encodeFields({
+      name: 'Secret plan', entryRules: 'do not leak',
+    }));
+
+    const listed = await call('/api/v1/plans', { db });
+    expect(listed.status).toBe(200);
+    const body = await listed.json();
+    expect(body.plans.map((plan) => plan.id)).toEqual(['active', 'paused']);
+    expect(body.plans[0]).toMatchObject({
+      name: 'London ORB', isActive: true, sessions: ['London'], maxDailyLoss: 3, pairs: ['BTCUSDT'],
+    });
+    expect(body.plans[0].entryRules).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain('Secret');
+
+    const one = await call('/api/v1/plans/active', { db });
+    expect(one.status).toBe(200);
+    expect((await one.json()).plan).toMatchObject({
+      id: 'active',
+      entryRules: 'wait for the range',
+      exitRules: 'first target',
+      riskManagement: '1% per trade',
+      sessions: ['London'],
+      checklist: ['HTF bias'],
+      mistakesToAvoid: ['revenge'],
+      maxDailyLoss: 3,
+      maxPositions: 2,
+      tradeExamples: [{ title: 'example', chartUrl: 'https://charts.example/p', description: 'clean' }],
+    });
+    const foreign = await call('/api/v1/plans/secret', { db });
+    expect(foreign.status).toBe(404);
+    const bad = await call(`/api/v1/plans/${'a'.repeat(129)}`, { db });
+    expect(bad.status).toBe(400);
+    const write = await call('/api/v1/plans', { method: 'POST', db, body: { name: 'nope' } });
+    expect(write.status).toBe(405);
+    const patch = await call('/api/v1/plans/active', { method: 'PATCH', db, body: { name: 'changed' } });
+    expect(patch.status).toBe(405);
+    expect(decodeFields(db.docs.get('users/user1/tradingPlans/active')).name).toBe('London ORB');
+    expect(db.docs.has('users/user2/tradingPlans/secret')).toBe(true);
+  });
+
   it('rate limits a user without writing KV', async () => {
     const db = memoryDb();
     const res = await call('/api/v1/stats?journalId=j1', { db, extra: { rateLimit: async () => ({ count: 61 }) } });

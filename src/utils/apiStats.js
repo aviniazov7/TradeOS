@@ -1,5 +1,5 @@
-import { initialRiskUsd, signedTradeR } from './calculations';
-import { computeDashboardStats, sliceTradesForStats } from './dashboardStats';
+import { calculateMaxStreaks, initialRiskUsd, signedTradeR, winRateOf } from './calculations';
+import { computeDashboardStats, sliceTradesForStats, windowBounds } from './dashboardStats';
 
 /**
  * Public-API stats for one journal and period.
@@ -57,5 +57,95 @@ export function computeApiStats(trades, initialBalance = 0, { period = 'all', fr
     avgR: rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null,
     maxDrawdown: dash.maxDrawdown,
     maxDrawdownAmount: dash.maxDrawdownAbsolute,
+  };
+}
+
+function backtestMillis(trade) {
+  const raw = trade?.date || trade?.createdAt || '';
+  if (!raw) return null;
+  const ms = new Date(raw).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function rResultOf(trade) {
+  const n = Number(trade?.rResult);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Stats for one backtest journal.
+ *
+ * Backtest rows store an R result (`rResult`), not dollar P&L, and the
+ * journal has no opening balance. Dollar fields from the live stats object
+ * are null. `avgR` is the backtest screen's mean R (missing `rResult`
+ * counts as 0). `profitFactor` is that screen's R profit factor. `avgR` is
+ * null when the window has no trades.
+ */
+export function computeBacktestApiStats(trades, { period = 'all', from = null, to = null, now = new Date() } = {}) {
+  const list = Array.isArray(trades) ? trades : [];
+  const { periodStart, periodEnd } = windowBounds(period, { from, to, now });
+  const filtered = (!periodStart && !periodEnd)
+    ? list
+    : list.filter((trade) => {
+      const ms = backtestMillis(trade);
+      if (ms == null) return false;
+      if (periodStart && ms < periodStart.getTime()) return false;
+      if (periodEnd && ms > periodEnd.getTime()) return false;
+      return true;
+    });
+
+  const wins = filtered.filter((trade) => trade.result === 'win').length;
+  const losses = filtered.filter((trade) => trade.result === 'loss').length;
+  const breakeven = filtered.filter((trade) => trade.result === 'breakeven').length;
+  const rs = filtered.map(rResultOf);
+  const totalR = rs.reduce((sum, r) => sum + r, 0);
+  const positive = rs.filter((r) => r > 0).reduce((sum, r) => sum + r, 0);
+  const negative = Math.abs(rs.filter((r) => r < 0).reduce((sum, r) => sum + r, 0));
+  const profitFactorR = negative > 0 ? positive / negative : positive > 0 ? Infinity : 0;
+  const ordered = [...filtered].sort((a, b) => (backtestMillis(a) ?? 0) - (backtestMillis(b) ?? 0));
+  const streaks = calculateMaxStreaks(ordered);
+  let equity = 0;
+  let peak = 0;
+  let maxDrawdownR = 0;
+  for (const trade of ordered) {
+    equity += rResultOf(trade);
+    if (equity > peak) peak = equity;
+    if (peak - equity > maxDrawdownR) maxDrawdownR = peak - equity;
+  }
+
+  return {
+    type: 'backtest',
+    isBacktest: true,
+    period: from != null || to != null ? 'custom' : (period || 'all'),
+    from: from ?? null,
+    to: to ?? null,
+    initialBalance: null,
+    counts: {
+      total: filtered.length,
+      closed: filtered.length,
+      open: 0,
+      partial: 0,
+      wins,
+      losses,
+      breakeven,
+    },
+    winRate: winRateOf(wins, losses),
+    totalPnl: null,
+    totalR,
+    startBalance: null,
+    currentBalance: null,
+    returnPercent: null,
+    riskAmount: null,
+    profitFactor: Number.isFinite(profitFactorR) ? profitFactorR : null,
+    profitFactorInfinite: profitFactorR === Infinity,
+    expectancy: null,
+    avgR: filtered.length ? totalR / filtered.length : null,
+    bestR: filtered.length ? Math.max(...rs) : null,
+    worstR: filtered.length ? Math.min(...rs) : null,
+    maxWinStreak: streaks.maxWin,
+    maxLossStreak: streaks.maxLoss,
+    maxDrawdown: null,
+    maxDrawdownAmount: null,
+    maxDrawdownR,
   };
 }
