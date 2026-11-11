@@ -161,6 +161,70 @@ curl -s https://trade-os.tradeos.workers.dev/api/v1/plans/PLAN_ID \
 }
 ```
 
+## GET /api/v1/daily-journals
+
+Reads the caller's morning and evening entries (`users/{uid}/morningJournals` and `users/{uid}/eveningJournals`). Read-only. Business-ledger and notebook documents are not included.
+
+`from` and `to` are inclusive calendar days (`YYYY-MM-DD`, or an ISO timestamp whose date prefix is used). They match the entry's `date`. `kind` is `morning` or `evening`; omit it for both. Newest date first. The same date lists the morning entry before the evening entry.
+
+`journalId` or `journal`, when set, must be a live journal the key owns (`404` otherwise). Morning and evening entries are not stored on a trading journal, so the filter does not narrow the list. The response says so with `filteredByJournal: false` and echoes `journalId` (`null` when omitted).
+
+Each entry is the stored document plus `id` and `kind`. Morning fields include `emotion`, `readinessLevel`, `sleepQuality`, `marketBias`, `mainGoal`, `focusToday`, `rulesChecked`, and `rulesPlanName`. Evening fields include `dayRating`, `emotionAfter`, `emotionsAfter`, `planAdherence`, `followedPlan`, `lessonsLearned`, `whatWentWell`, `whatDidntGoWell`, and `gratitude`.
+
+`POST` is `405`.
+
+```bash
+curl -s "https://trade-os.tradeos.workers.dev/api/v1/daily-journals?from=2026-06-01&to=2026-06-30&kind=morning" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+```json
+{
+  "journalId": null,
+  "filteredByJournal": false,
+  "entries": [
+    { "id": "ENTRY_ID", "kind": "morning", "date": "2026-06-02", "emotion": "calm", "sleepQuality": "good", "mainGoal": "one setup" }
+  ]
+}
+```
+
+## GET /api/v1/risk-rules
+
+Reads risk rules for the caller's live journals and whether they are breached now. Read-only. Omit `journalId` to list every live journal. Pass `journalId` or `journal` for one. A backtest journal is `400` (`risk rules apply to live journals`). Another user's journal is `404`.
+
+`riskRules` and `dailyLossAlert` are the objects stored on the journal (`null` when the journal has never saved them). `status` is the same measurement the journal screen uses, against closed trades, on the Asia/Jerusalem clock:
+
+- `weeklyLoss`, `dailyLossPercent`, `weeklyLossPercent`, `maxTrades`, `tradingHours` — from `journal.riskRules`
+- `dailyLossAlert` — from `journal.dailyLossAlert` (`show` is true when today's loss has reached the dollar cap)
+- `breached` — true when any enabled rule is breached or the daily alert is showing
+
+`truncated` is true when the trade scan stopped at 5000 documents. No new Firestore index. `POST` is `405`.
+
+```bash
+curl -s "https://trade-os.tradeos.workers.dev/api/v1/risk-rules?journalId=JOURNAL_ID" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+```json
+{
+  "journals": [
+    {
+      "journalId": "JOURNAL_ID",
+      "name": "MEXC",
+      "riskRules": { "weeklyLoss": { "enabled": true, "amount": 100 }, "maxTradesPerDay": { "enabled": true, "count": 3 } },
+      "dailyLossAlert": { "enabled": true, "amount": 80 },
+      "status": {
+        "dayKey": "2026-06-15",
+        "breached": true,
+        "weeklyLoss": { "enabled": true, "breached": true, "loss": 110, "cap": 100 },
+        "dailyLossAlert": { "show": true, "loss": 110, "amount": 80 }
+      },
+      "truncated": false
+    }
+  ]
+}
+```
+
 ## POST /api/v1/trades
 
 Adds a trade to a journal you own. Pass `journalId`, or `journal` (the journal's name, or its id). One of them is required. Omitting both is `400` with `journalId is required` — the same rejection as before. The Worker does not pick a default journal.
@@ -369,6 +433,26 @@ curl -s "https://trade-os.tradeos.workers.dev/api/v1/stats?journalId=BACKTEST_JO
 - `winRate` excludes breakevens, matching the dashboard.
 - `maxDrawdown` is a percent of account equity, or `null` without an opening balance. `maxDrawdownAmount` is the dollar drawdown either way.
 - `truncated` is true if the journal has more than 5000 trades and the stats used the first 5000.
+
+Optional `groupBy` is `session`, `setup`, `weekday`, or `hour`. Any other value is `400`. When it is set, the response adds `groupBy` and `groups`. When it is omitted, those fields are absent.
+
+Each group is `{ key, count, wins, losses, breakeven, winRate, totalPnl, totalR, avgR }`. Groups are ordered by count, then key. Live groups are the closed trades in the stats window. Backtest groups are the backtest rows in that window, and `totalPnl` is `null`.
+
+| `groupBy` | Live key | Backtest key |
+|---|---|---|
+| `session` | stored `session`, or the Israel session of `entryDate` | stored `session`, or `לא ידוע` |
+| `setup` | each name in `setups` (`ללא סטאפ` when the trade has none). A trade with two setups is counted in both | `strategy` (the setup), or `ללא אסטרטגיה` |
+| `weekday` | `Sun` … `Sat` in Asia/Jerusalem, from `entryDate` | same, from `date` (or `createdAt`) |
+| `hour` | `00`–`23` in Asia/Jerusalem | same |
+
+```bash
+curl -s "https://trade-os.tradeos.workers.dev/api/v1/stats?journalId=JOURNAL_ID&groupBy=session" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+```json
+{ "groupBy": "session", "groups": [ { "key": "London", "count": 4, "wins": 3, "losses": 1, "breakeven": 0, "winRate": 75, "totalPnl": 120, "totalR": 3.5, "avgR": 0.875 } ] }
+```
 
 Backtest example:
 

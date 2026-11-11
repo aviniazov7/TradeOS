@@ -8,8 +8,11 @@
 import { normalizeCustomFieldDefs } from '../src/utils/customTradeFields.js';
 import { buildStoredTrade, withDerivedRiskAmount } from '../src/utils/tradeDoc.js';
 import { inspectApiTradePatch, prepareApiTrade, storedTradeInput } from '../src/utils/tradeValidation.js';
-import { computeApiStats, computeBacktestApiStats } from '../src/utils/apiStats.js';
+import { computeApiStats, computeBacktestApiStats, parseGroupBy } from '../src/utils/apiStats.js';
+import { dailyLossAlertState } from '../src/utils/dailyLossAlert.js';
 import { windowBounds } from '../src/utils/dashboardStats.js';
+import { evaluateJournalRisk } from '../src/utils/journalRiskRules.js';
+import { entryDayKey } from '../src/utils/mentalityJournalForm.js';
 import { tradeImageIds } from '../src/utils/tradeImageSlots.js';
 import {
   buildIdOrderedQuery, buildTradesQuery, decodeFields, docIdFromName, encodeFields, fsBase, sha256Hex, toPublicTrade,
@@ -235,6 +238,8 @@ export async function handlePublicApi(request, env, deps) {
     if (path === '/api/v1/plans' && request.method === 'GET') return await listPlans(ctx);
     const planItem = path.match(/^\/api\/v1\/plans\/([^/]+)$/);
     if (planItem && request.method === 'GET') return await getPlan(planItem[1], ctx);
+    if (path === '/api/v1/daily-journals' && request.method === 'GET') return await listDailyJournals(url, ctx);
+    if (path === '/api/v1/risk-rules' && request.method === 'GET') return await listRiskRules(url, ctx);
     if (path === '/api/v1/keys' && request.method === 'POST') return await createKey(request, ctx);
     if (path === '/api/v1/keys' && request.method === 'GET') return await listKeys(ctx);
     const keyMatch = path.match(/^\/api\/v1\/keys\/([^/]+)$/);
@@ -509,7 +514,7 @@ export async function listTrades(url, ctx) {
 }
 
 export async function journalStats(url, ctx) {
-  const { cors, auth, base, fetchFn } = ctx;
+  const { cors } = ctx;
   const resolved = await resolveJournal(ctx, {
     journalId: url.searchParams.get('journalId') || '',
     journal: url.searchParams.get('journal') || '',
@@ -527,22 +532,32 @@ export async function journalStats(url, ctx) {
     return json(cors, 400, { error: 'invalid from/to date' });
   }
 
+  const grouped = parseGroupBy(url.searchParams.get('groupBy'));
+  if (!grouped.ok) return json(cors, 400, { error: grouped.error });
   const now = ctx.now ? ctx.now() : new Date();
   if (resolved.kind === 'backtest') {
     const loaded = await loadBacktestTrades(ctx, journalId);
     const stats = computeBacktestApiStats(loaded.trades.map((row) => row.data), {
-      period, from: from || null, to: to || null, now,
+      period, from: from || null, to: to || null, now, groupBy: grouped.value,
     });
     return json(cors, 200, { journalId, ...stats, truncated: loaded.truncated });
   }
 
+  const loaded = await loadLiveTrades(ctx, journalId);
+  const stats = computeApiStats(loaded.trades, Number(journal.data.initialBalance) || 0, {
+    period, from: from || null, to: to || null, now, groupBy: grouped.value,
+  });
+  return json(cors, 200, { journalId, type: 'live', isBacktest: false, ...stats, truncated: loaded.truncated });
+}
+
+async function loadLiveTrades(ctx, journalId) {
   const trades = [];
   let startAfterName = '';
   let truncated = false;
   for (;;) {
     const rows = await runQuery(
-      fetchFn, auth.admin,
-      `${base}/documents/users/${auth.uid}:runQuery`,
+      ctx.fetchFn, ctx.auth.admin,
+      `${ctx.base}/documents/users/${ctx.auth.uid}:runQuery`,
       buildTradesQuery({ journalId, limit: PAGE, sort: 'name', startAfterName: startAfterName || undefined }),
     );
     if (!rows.length) break;
@@ -551,10 +566,7 @@ export async function journalStats(url, ctx) {
     if (trades.length >= STATS_CAP) { truncated = rows.length === PAGE; break; }
     if (rows.length < PAGE) break;
   }
-  const stats = computeApiStats(trades, Number(journal.data.initialBalance) || 0, {
-    period, from: from || null, to: to || null, now,
-  });
-  return json(cors, 200, { journalId, type: 'live', isBacktest: false, ...stats, truncated });
+  return { trades, truncated };
 }
 
 function hasText(value) {
@@ -910,6 +922,120 @@ function comparePlans(a, b) {
   const byName = a.name.localeCompare(b.name);
   if (byName) return byName;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+function dayQuery(raw) {
+  if (raw == null || raw === '') return { ok: true, value: '' };
+  if (typeof raw !== 'string') return { ok: false, error: 'invalid from/to date' };
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw.trim());
+  if (!match) return { ok: false, error: 'invalid from/to date' };
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) {
+    return { ok: false, error: 'invalid from/to date' };
+  }
+  return { ok: true, value: `${match[1]}-${match[2]}-${match[3]}` };
+}
+
+function publicDailyEntry(row, kind) {
+  return toPublicTrade({ ...(row.data || {}), id: row.id, kind });
+}
+
+/**
+ * Morning and evening entries live on the user, not on a trading journal.
+ * journalId, when passed, must be a live journal the key owns. It does not
+ * filter the entries, because those documents have no journalId.
+ */
+export async function listDailyJournals(url, ctx) {
+  const from = dayQuery(url.searchParams.get('from'));
+  if (!from.ok) return json(ctx.cors, 400, { error: from.error });
+  const to = dayQuery(url.searchParams.get('to'));
+  if (!to.ok) return json(ctx.cors, 400, { error: to.error });
+  const kindRaw = url.searchParams.get('kind') || '';
+  if (kindRaw && kindRaw !== 'morning' && kindRaw !== 'evening') {
+    return json(ctx.cors, 400, { error: 'kind must be morning or evening' });
+  }
+  const journalId = url.searchParams.get('journalId') || '';
+  const journalName = url.searchParams.get('journal') || '';
+  if (hasText(journalId) || hasText(journalName)) {
+    const resolved = await resolveJournal(ctx, { journalId, journal: journalName });
+    if (!resolved.ok) return json(ctx.cors, resolved.status, { error: resolved.error });
+  }
+  const morning = kindRaw === 'evening' ? [] : await listCollectionDocs(ctx, 'morningJournals');
+  const evening = kindRaw === 'morning' ? [] : await listCollectionDocs(ctx, 'eveningJournals');
+  const entries = [
+    ...morning.map((row) => publicDailyEntry(row, 'morning')),
+    ...evening.map((row) => publicDailyEntry(row, 'evening')),
+  ].filter((entry) => {
+    const day = entryDayKey(entry);
+    if ((from.value || to.value) && !day) return false;
+    if (from.value && day < from.value) return false;
+    if (to.value && day > to.value) return false;
+    return true;
+  });
+  entries.sort((a, b) => {
+    const byDate = String(b.date || '').localeCompare(String(a.date || ''));
+    if (byDate) return byDate;
+    if (a.kind !== b.kind) return a.kind === 'morning' ? -1 : 1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  return json(ctx.cors, 200, {
+    journalId: journalId || null,
+    filteredByJournal: false,
+    entries,
+  });
+}
+
+function riskJournalRow(journal, trades, { now, truncated }) {
+  const data = journal.data || {};
+  const rules = data.riskRules ?? null;
+  const alert = data.dailyLossAlert ?? null;
+  const balance = Number(data.initialBalance) || 0;
+  const measured = evaluateJournalRisk(trades, rules, { now, journalId: journal.id, balance });
+  const daily = dailyLossAlertState(trades, alert, { now, journalId: journal.id });
+  return {
+    journalId: journal.id,
+    name: typeof data.name === 'string' ? data.name : '',
+    riskRules: rules,
+    dailyLossAlert: alert,
+    status: {
+      dayKey: measured.dayKey,
+      weekStart: measured.weekStart,
+      weeklyLoss: measured.weeklyLoss,
+      dailyLossPercent: measured.dailyLossPercent,
+      weeklyLossPercent: measured.weeklyLossPercent,
+      maxTrades: measured.maxTrades,
+      tradingHours: measured.tradingHours,
+      dailyLossAlert: daily,
+      breached: measured.breached || daily.show,
+    },
+    truncated,
+  };
+}
+
+export async function listRiskRules(url, ctx) {
+  const journalId = url.searchParams.get('journalId') || '';
+  const journalName = url.searchParams.get('journal') || '';
+  let journals;
+  if (hasText(journalId) || hasText(journalName)) {
+    const resolved = await resolveJournal(ctx, {
+      journalId, journal: journalName, includeBacktest: true, required: true,
+    });
+    if (!resolved.ok) return json(ctx.cors, resolved.status, { error: resolved.error });
+    if (resolved.kind === 'backtest') {
+      return json(ctx.cors, 400, { error: 'risk rules apply to live journals' });
+    }
+    journals = [resolved.journal];
+  } else {
+    journals = await listCollectionDocs(ctx, 'journals');
+  }
+  const loaded = await loadLiveTrades(ctx, journals.length === 1 ? journals[0].id : '');
+  const now = ctx.now ? ctx.now() : new Date();
+  const rows = journals.map((journal) => riskJournalRow(journal, loaded.trades, { now, truncated: loaded.truncated }));
+  rows.sort((a, b) => a.name.localeCompare(b.name) || (a.journalId < b.journalId ? -1 : a.journalId > b.journalId ? 1 : 0));
+  return json(ctx.cors, 200, { journals: rows });
 }
 
 export async function listPlans(ctx) {

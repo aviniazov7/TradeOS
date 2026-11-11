@@ -46,7 +46,7 @@ A trading journal and analytics platform for crypto, stocks and futures traders:
 
 ### Analytics & backtesting
 - Equity, session (Israel time), day-of-week and duration analysis; Sharpe, Sortino, Calmar, drawdown and recovery.
-- Separate **backtest journals** with their own analytics and a shareable strategy view. The public API and MCP can read them (`type`: `live` or `backtest` on `GET /api/v1/journals`, backtest trades on `GET /api/v1/trades`, R stats on `GET /api/v1/stats`) and can read trading plans (`GET /api/v1/plans`). Writes stay on live journals. See [docs/API.md](docs/API.md) and [docs/MCP.md](docs/MCP.md).
+- Separate **backtest journals** with their own analytics and a shareable strategy view. The public API and MCP can read them, plus trading plans, morning/evening journals, and live-journal risk rules. Stats accept `groupBy=session|setup|weekday|hour`. Writes stay on live journals. Business ledger and notebook stay off the API. See [docs/API.md](docs/API.md) and [docs/MCP.md](docs/MCP.md).
 
 ### Portfolio, plans and tax
 - **Portfolio** (`/portfolio`): DCA plans and their performance, plus read-only on-chain wallet balances (EVM, Solana, Bitcoin).

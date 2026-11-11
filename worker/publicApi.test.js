@@ -973,6 +973,134 @@ describe('public API v1', () => {
     expect(db.docs.has('users/user2/tradingPlans/secret')).toBe(true);
   });
 
+  it('reads daily journals and risk-rule status, and groups stats', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', encodeFields({
+      name: 'MEXC',
+      initialBalance: 1000,
+      dailyLossAlert: { enabled: true, amount: 80 },
+      riskRules: {
+        weeklyLoss: { enabled: true, amount: 100 },
+        dailyLossPercent: { enabled: false, percent: null },
+        weeklyLossPercent: { enabled: false, percent: null },
+        maxTradesPerDay: { enabled: true, count: 1 },
+        tradingHours: { enabled: false, start: null, end: null },
+      },
+    }));
+    db.put('users/user1/journals/quiet', encodeFields({ name: 'Quiet', initialBalance: 500 }));
+    db.put('users/user1/backtestJournals/bj1', encodeFields({ name: 'BTC backtest' }));
+    db.put('users/user2/journals/theirs', encodeFields({
+      name: 'Theirs',
+      riskRules: { weeklyLoss: { enabled: true, amount: 1 } },
+    }));
+    const closed = (id, extra) => db.put(`users/user1/trades/${id}`, encodeFields({
+      journalId: 'j1',
+      pair: 'BTCUSDT',
+      direction: 'long',
+      status: 'closed',
+      entryPrice: 100,
+      exitPrice: 90,
+      quantity: 1,
+      entryDate: new Date('2026-06-15T12:00:00.000Z'),
+      exitDate: new Date('2026-06-15T12:00:00.000Z'),
+      ...extra,
+    }));
+    closed('london', { session: 'London', setups: ['Spring'], result: 'win', netPnl: 10, pnl: 10, exitPrice: 110 });
+    closed('ny', { session: 'New York', result: 'loss', netPnl: -110, pnl: -110 });
+    db.put('users/user1/backtests/bt', encodeFields({
+      backtestJournalId: 'bj1', strategy: 'ORB', session: 'London', result: 'win', rResult: 2,
+      date: '2026-06-15T12:00:00.000Z',
+    }));
+    db.put('users/user1/morningJournals/m1', encodeFields({
+      date: '2026-06-02', emotion: 'calm', readinessLevel: 7, sleepQuality: 'good', mainGoal: 'one setup',
+    }));
+    db.put('users/user1/eveningJournals/e1', encodeFields({
+      date: '2026-06-02', dayRating: 8, lessonsLearned: 'stop after two losses', emotionAfter: 'calm',
+    }));
+    db.put('users/user1/morningJournals/old', encodeFields({
+      date: '2026-05-01', emotion: 'anxious', mainGoal: 'old',
+    }));
+    db.put('users/user2/morningJournals/secret', encodeFields({
+      date: '2026-06-02', emotion: 'secret', mainGoal: 'hidden',
+    }));
+    db.put('users/user1/notebookEntries/note', encodeFields({ title: 'private note' }));
+    db.put('users/user1/businessEntries/income', encodeFields({ amount: 50, kind: 'income' }));
+
+    const daily = await call('/api/v1/daily-journals?from=2026-06-01&to=2026-06-30&journalId=j1', { db });
+    expect(daily.status).toBe(200);
+    const dailyBody = await daily.json();
+    expect(dailyBody.filteredByJournal).toBe(false);
+    expect(dailyBody.journalId).toBe('j1');
+    expect(dailyBody.entries.map((entry) => [entry.id, entry.kind])).toEqual([['m1', 'morning'], ['e1', 'evening']]);
+    expect(dailyBody.entries[0]).toMatchObject({ emotion: 'calm', sleepQuality: 'good', mainGoal: 'one setup' });
+    expect(dailyBody.entries[1].lessonsLearned).toBe('stop after two losses');
+    expect(JSON.stringify(dailyBody)).not.toContain('hidden');
+    expect(JSON.stringify(dailyBody)).not.toContain('private note');
+    expect(JSON.stringify(dailyBody)).not.toContain('income');
+
+    const evenings = await call('/api/v1/daily-journals?kind=evening', { db });
+    expect((await evenings.json()).entries.map((entry) => entry.id)).toEqual(['e1']);
+    const foreignJournal = await call('/api/v1/daily-journals?journalId=theirs', { db });
+    expect(foreignJournal.status).toBe(404);
+    const badDay = await call('/api/v1/daily-journals?from=yesterday', { db });
+    expect(badDay.status).toBe(400);
+    const writeDaily = await call('/api/v1/daily-journals', { method: 'POST', db, body: { emotion: 'nope' } });
+    expect(writeDaily.status).toBe(405);
+    expect(db.docs.has('users/user2/morningJournals/secret')).toBe(true);
+
+    const rules = await call('/api/v1/risk-rules?journalId=j1', { db });
+    expect(rules.status).toBe(200);
+    const ruleBody = await rules.json();
+    expect(ruleBody.journals).toHaveLength(1);
+    expect(ruleBody.journals[0]).toMatchObject({
+      journalId: 'j1',
+      name: 'MEXC',
+      riskRules: { weeklyLoss: { enabled: true, amount: 100 }, maxTradesPerDay: { enabled: true, count: 1 } },
+      dailyLossAlert: { enabled: true, amount: 80 },
+    });
+    expect(ruleBody.journals[0].status.breached).toBe(true);
+    expect(ruleBody.journals[0].status.weeklyLoss.breached).toBe(true);
+    expect(ruleBody.journals[0].status.maxTrades.breached).toBe(true);
+    expect(ruleBody.journals[0].status.dailyLossAlert.show).toBe(true);
+    expect(ruleBody.journals[0].status.dayKey).toBe('2026-06-15');
+    const quiet = await call('/api/v1/risk-rules?journal=Quiet', { db });
+    expect((await quiet.json()).journals[0]).toMatchObject({
+      journalId: 'quiet', riskRules: null, dailyLossAlert: null, status: { breached: false },
+    });
+    const backtestRules = await call('/api/v1/risk-rules?journalId=bj1', { db });
+    expect(backtestRules.status).toBe(400);
+    const allRules = await call('/api/v1/risk-rules', { db });
+    const allRuleBody = await allRules.json();
+    expect(allRuleBody.journals.map((row) => row.journalId)).toEqual(['j1', 'quiet']);
+    expect(JSON.stringify(allRuleBody)).not.toContain('Theirs');
+    const writeRules = await call('/api/v1/risk-rules', { method: 'POST', db, body: {} });
+    expect(writeRules.status).toBe(405);
+
+    const bySession = await call('/api/v1/stats?journalId=j1&groupBy=session', { db });
+    const sessionStats = await bySession.json();
+    expect(sessionStats.groupBy).toBe('session');
+    expect(sessionStats.groups.map((group) => [group.key, group.count, group.totalPnl])).toEqual([
+      ['London', 1, 10],
+      ['New York', 1, -110],
+    ]);
+    const bySetup = await call('/api/v1/stats?journalId=j1&groupBy=setup', { db });
+    expect((await bySetup.json()).groups.map((group) => group.key).sort()).toEqual(['Spring', 'ללא סטאפ']);
+    const byClock = await call('/api/v1/stats?journalId=j1&groupBy=hour', { db });
+    expect((await byClock.json()).groups).toEqual([
+      expect.objectContaining({ key: '15', count: 2 }),
+    ]);
+    const byDay = await call('/api/v1/stats?journalId=j1&groupBy=weekday', { db });
+    expect((await byDay.json()).groups[0].key).toBe('Mon');
+    const backtestGroups = await call('/api/v1/stats?journalId=bj1&groupBy=setup', { db });
+    expect((await backtestGroups.json()).groups).toEqual([
+      expect.objectContaining({ key: 'ORB', count: 1, totalR: 2, totalPnl: null }),
+    ]);
+    const plain = await call('/api/v1/stats?journalId=quiet', { db });
+    expect((await plain.json()).groups).toBeUndefined();
+    const badGroup = await call('/api/v1/stats?journalId=j1&groupBy=pair', { db });
+    expect(badGroup.status).toBe(400);
+  });
+
   it('rate limits a user without writing KV', async () => {
     const db = memoryDb();
     const res = await call('/api/v1/stats?journalId=j1', { db, extra: { rateLimit: async () => ({ count: 61 }) } });
