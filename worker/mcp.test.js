@@ -83,7 +83,8 @@ describe('MCP streamable HTTP', () => {
     });
     const tools = await rpc(listed);
     expect(tools.result.tools.map((tool) => tool.name)).toEqual([
-      'list_journals', 'add_trade', 'update_trade', 'list_trades', 'delete_trade', 'get_stats', 'list_plans', 'get_plan',
+      'list_journals', 'add_trade', 'update_trade', 'list_trades', 'delete_trade', 'get_stats',
+      'list_daily_journals', 'get_risk_rules', 'list_plans', 'get_plan',
     ]);
     for (const tool of tools.result.tools) {
       expect(tool.description.length).toBeGreaterThan(40);
@@ -412,6 +413,45 @@ describe('MCP streamable HTTP', () => {
     expect(missing.result.isError).toBe(true);
     expect(db.docs.has('users/user2/tradingPlans/secret')).toBe(true);
     expect(decodeFields(db.docs.get('users/user1/tradingPlans/p1')).entryRules).toBe('wait');
+  });
+
+  it('reads daily journals, risk rules, and grouped stats', async () => {
+    const db = memoryDb();
+    db.put('users/user1/journals/j1', encodeFields({
+      name: 'MEXC', initialBalance: 1000,
+      dailyLossAlert: { enabled: true, amount: 10 },
+    }));
+    db.put('users/user1/trades/t1', encodeFields({
+      journalId: 'j1', status: 'closed', result: 'loss', session: 'London',
+      netPnl: -25, pnl: -25, entryDate: new Date('2026-06-15T12:00:00.000Z'),
+      exitDate: new Date('2026-06-15T12:00:00.000Z'),
+    }));
+    db.put('users/user1/morningJournals/m1', encodeFields({
+      date: '2026-06-02', emotion: 'calm', mainGoal: 'wait',
+    }));
+    db.put('users/user2/morningJournals/secret', encodeFields({ date: '2026-06-02', mainGoal: 'hidden' }));
+
+    const daily = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'list_daily_journals', arguments: { from: '2026-06-01', to: '2026-06-30', kind: 'morning' } },
+    }));
+    expect(daily.result.isError).toBe(false);
+    expect(daily.result.structuredContent.entries.map((entry) => entry.id)).toEqual(['m1']);
+    expect(JSON.stringify(daily.result.structuredContent)).not.toContain('hidden');
+
+    const rules = await rpc(await mcp(db, {
+      method: 'tools/call', params: { name: 'get_risk_rules', arguments: { journalId: 'j1' } },
+    }));
+    expect(rules.result.structuredContent.journals[0].status.breached).toBe(true);
+    expect(rules.result.structuredContent.journals[0].status.dailyLossAlert.show).toBe(true);
+
+    const stats = await rpc(await mcp(db, {
+      method: 'tools/call',
+      params: { name: 'get_stats', arguments: { journalId: 'j1', groupBy: 'session' } },
+    }));
+    expect(stats.result.structuredContent.groups).toEqual([
+      expect.objectContaining({ key: 'London', count: 1, totalPnl: -25 }),
+    ]);
   });
 
   it('rejects a bad key, a disallowed origin, and a rate limit before running a tool', async () => {

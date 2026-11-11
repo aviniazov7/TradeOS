@@ -1,5 +1,101 @@
-import { calculateMaxStreaks, initialRiskUsd, signedTradeR, winRateOf } from './calculations';
+import { calculateMaxStreaks, initialRiskUsd, safePnl, signedTradeR, winRateOf } from './calculations';
 import { computeDashboardStats, sliceTradesForStats, windowBounds } from './dashboardStats';
+import { jerusalemMinutes } from './journalRiskRules.js';
+import { getSessionFromDate, SESSION_UNKNOWN } from './sessions.js';
+import { tradeSetups } from './setupStats.js';
+
+const GROUP_BY = new Set(['session', 'setup', 'weekday', 'hour']);
+
+export function parseGroupBy(raw) {
+  if (raw == null || raw === '') return { ok: true, value: '' };
+  if (typeof raw !== 'string' || !GROUP_BY.has(raw.trim())) {
+    return { ok: false, error: 'groupBy must be session, setup, weekday, or hour' };
+  }
+  return { ok: true, value: raw.trim() };
+}
+
+function instantOf(raw) {
+  if (raw == null || raw === '') return null;
+  const date = raw instanceof Date ? raw : new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function jerusalemWeekday(date) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem',
+    weekday: 'short',
+  }).format(date);
+}
+
+function groupKeys(trade, groupBy, mode) {
+  if (groupBy === 'session') {
+    if (mode === 'backtest') return [trade.session || 'לא ידוע'];
+    const stored = typeof trade.session === 'string' ? trade.session.trim() : '';
+    if (stored) return [stored];
+    const instant = instantOf(trade.entryDate || trade.exitDate);
+    return [instant ? getSessionFromDate(instant, { fallback: SESSION_UNKNOWN }) : SESSION_UNKNOWN];
+  }
+  if (groupBy === 'setup') {
+    if (mode === 'backtest') return [trade.strategy || 'ללא אסטרטגיה'];
+    const setups = tradeSetups(trade);
+    return setups.length ? setups : ['ללא סטאפ'];
+  }
+  const instant = instantOf(mode === 'backtest'
+    ? (trade.date || trade.createdAt)
+    : (trade.entryDate || trade.exitDate));
+  if (!instant) return ['(no date)'];
+  if (groupBy === 'weekday') return [jerusalemWeekday(instant)];
+  const minutes = jerusalemMinutes(instant);
+  return [minutes == null ? '(no date)' : String(Math.floor(minutes / 60)).padStart(2, '0')];
+}
+
+/**
+ * One bucket per session, setup, weekday, or hour.
+ * A live trade with several setups is counted in each. Weekday and hour use
+ * Asia/Jerusalem. Live groups are closed trades; backtest groups are the
+ * rows in the stats window. Dollar P&L is null for backtests.
+ */
+export function groupTradeStats(trades, groupBy, mode) {
+  const buckets = new Map();
+  for (const trade of trades || []) {
+    for (const key of groupKeys(trade, groupBy, mode)) {
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { key, count: 0, wins: 0, losses: 0, breakeven: 0, pnl: 0, rSum: 0, rCount: 0 };
+        buckets.set(key, bucket);
+      }
+      bucket.count += 1;
+      if (trade.result === 'win') bucket.wins += 1;
+      else if (trade.result === 'loss') bucket.losses += 1;
+      else if (trade.result === 'breakeven') bucket.breakeven += 1;
+      if (mode === 'backtest') {
+        const r = Number(trade.rResult);
+        bucket.rSum += Number.isFinite(r) ? r : 0;
+        bucket.rCount += 1;
+      } else {
+        bucket.pnl += safePnl(trade);
+        const r = signedTradeR(trade);
+        if (r != null) {
+          bucket.rSum += r;
+          bucket.rCount += 1;
+        }
+      }
+    }
+  }
+  return [...buckets.values()]
+    .sort((a, b) => (b.count - a.count) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+    .map((bucket) => ({
+      key: bucket.key,
+      count: bucket.count,
+      wins: bucket.wins,
+      losses: bucket.losses,
+      breakeven: bucket.breakeven,
+      winRate: winRateOf(bucket.wins, bucket.losses),
+      totalPnl: mode === 'backtest' ? null : Math.round(bucket.pnl * 100) / 100,
+      totalR: mode === 'backtest' ? bucket.rSum : (bucket.rCount ? bucket.rSum : null),
+      avgR: bucket.rCount ? bucket.rSum / bucket.rCount : null,
+    }));
+}
 
 /**
  * Public-API stats for one journal and period.
@@ -19,7 +115,7 @@ import { computeDashboardStats, sliceTradesForStats, windowBounds } from './dash
  * avgR is the journal header "R ממוצע": mean signed net R of closed trades
  * that had a defined risk. Null when none of them did.
  */
-export function computeApiStats(trades, initialBalance = 0, { period = 'all', from = null, to = null, now = new Date() } = {}) {
+export function computeApiStats(trades, initialBalance = 0, { period = 'all', from = null, to = null, now = new Date(), groupBy = '' } = {}) {
   const options = { from, to, now };
   const opening = Number(initialBalance) || 0;
   const dash = computeDashboardStats(trades, opening, period, options);
@@ -57,6 +153,7 @@ export function computeApiStats(trades, initialBalance = 0, { period = 'all', fr
     avgR: rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : null,
     maxDrawdown: dash.maxDrawdown,
     maxDrawdownAmount: dash.maxDrawdownAbsolute,
+    ...(groupBy ? { groupBy, groups: groupTradeStats(closed, groupBy, 'live') } : {}),
   };
 }
 
@@ -81,7 +178,7 @@ function rResultOf(trade) {
  * counts as 0). `profitFactor` is that screen's R profit factor. `avgR` is
  * null when the window has no trades.
  */
-export function computeBacktestApiStats(trades, { period = 'all', from = null, to = null, now = new Date() } = {}) {
+export function computeBacktestApiStats(trades, { period = 'all', from = null, to = null, now = new Date(), groupBy = '' } = {}) {
   const list = Array.isArray(trades) ? trades : [];
   const { periodStart, periodEnd } = windowBounds(period, { from, to, now });
   const filtered = (!periodStart && !periodEnd)
@@ -147,5 +244,6 @@ export function computeBacktestApiStats(trades, { period = 'all', from = null, t
     maxDrawdown: null,
     maxDrawdownAmount: null,
     maxDrawdownR,
+    ...(groupBy ? { groupBy, groups: groupTradeStats(filtered, groupBy, 'backtest') } : {}),
   };
 }

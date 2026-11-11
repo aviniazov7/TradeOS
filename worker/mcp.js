@@ -6,7 +6,10 @@
 // No session id and no SSE stream. GET and DELETE are 405. POST is one
 // JSON-RPC message. Notifications get 202. Tool failures are isError results.
 
-import { authorizeApi, createTrade, deleteTrade, getPlan, journalStats, listJournals, listPlans, listTrades, updateTrade } from './publicApi.js';
+import {
+  authorizeApi, createTrade, deleteTrade, getPlan, journalStats, listDailyJournals, listJournals,
+  listPlans, listRiskRules, listTrades, updateTrade,
+} from './publicApi.js';
 
 const PROTOCOL_VERSIONS = ['2025-03-26', '2025-06-18', '2025-11-25'];
 const PREFERRED_PROTOCOL = '2025-11-25';
@@ -162,6 +165,37 @@ const TOOLS = [
         period: { type: 'string', enum: ['all', 'week', 'month', 'year'] },
         from: { type: 'string', description: 'ISO-8601 or YYYY-MM-DD. Replaces period when set.' },
         to: { type: 'string', description: 'ISO-8601 or YYYY-MM-DD. Replaces period when set.' },
+        groupBy: {
+          type: 'string',
+          enum: ['session', 'setup', 'weekday', 'hour'],
+          description: 'Add a groups array. session and setup use the stored field (backtest setup is strategy). weekday and hour are Asia/Jerusalem. Omit to leave the stats object unchanged.',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_daily_journals',
+    description: 'Read the API key owner\'s morning and evening journal entries. Read-only. Optional from and to are calendar days (YYYY-MM-DD, inclusive) matched to each entry\'s date. Optional kind is morning or evening; omit it for both. Optional journalId must be a live journal the key owns. Entries are not stored per trading journal, so journalId does not filter them (filteredByJournal is false). Each entry includes kind and the stored fields (emotion, sleep, lesson, and the rest). Another user\'s journal id is not found. Business ledger and notebook entries are not included.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        from: { type: 'string', description: 'Inclusive YYYY-MM-DD lower bound.' },
+        to: { type: 'string', description: 'Inclusive YYYY-MM-DD upper bound.' },
+        kind: { type: 'string', enum: ['morning', 'evening'] },
+        journalId: { type: 'string', description: 'A live journal the key owns. Checked, not used as a filter.' },
+      },
+    },
+  },
+  {
+    name: 'get_risk_rules',
+    description: 'Read live-journal risk rules and whether they are breached right now. Read-only. Omit journalId to list every live journal the key owns. Pass journalId or journal for one. Each row has riskRules and dailyLossAlert as stored, plus status from the same measurement as the journal screen (weekly loss, daily and weekly loss percent, max trades per day, trading hours, and the daily dollar alert). status.breached is true when any enabled rule or the daily alert is breached. A backtest journal is rejected. Dollar caps use closed trades only.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        journalId: { type: 'string' },
+        journal: { type: 'string', description: 'Live journal name or id. Omit with journalId to list every live journal.' },
       },
     },
   },
@@ -282,10 +316,16 @@ async function callTool(params, ctx) {
   }
   if (name === 'delete_trade') return asTool(await deleteTrade(typeof args.id === 'string' ? args.id : '', ctx));
   if (name === 'get_stats') {
-    return asTool(await journalStats(queryUrl('/api/v1/stats', args, ['journalId', 'journal', 'period', 'from', 'to']), ctx));
+    return asTool(await journalStats(queryUrl('/api/v1/stats', args, ['journalId', 'journal', 'period', 'from', 'to', 'groupBy']), ctx));
   }
   if (name === 'list_plans') return asTool(await listPlans(ctx));
   if (name === 'get_plan') return asTool(await getPlan(typeof args.id === 'string' ? args.id : '', ctx));
+  if (name === 'list_daily_journals') {
+    return asTool(await listDailyJournals(queryUrl('/api/v1/daily-journals', args, ['from', 'to', 'kind', 'journalId']), ctx));
+  }
+  if (name === 'get_risk_rules') {
+    return asTool(await listRiskRules(queryUrl('/api/v1/risk-rules', args, ['journalId', 'journal']), ctx));
+  }
   return toolError(`unknown tool: ${name}`);
 }
 
@@ -295,7 +335,7 @@ function initializeResult(params) {
     protocolVersion: PROTOCOL_VERSIONS.includes(requested) ? requested : PREFERRED_PROTOCOL,
     capabilities: { tools: { listChanged: false } },
     serverInfo: { name: 'tradeos', title: 'TradeOS', version: '1.0.0' },
-    instructions: 'TradeOS journal tools for the signed-in API key. list_journals returns live and backtest journals (type, isBacktest, id, name; live rows also include exchange). Optional type is live or backtest. add_trade writes one live trade to journalId or journal (optional idempotencyKey); omitting both is rejected. Backtest journals are read-only. custom, when sent, is checked against settings/customTradeFields. update_trade patches one live trade by id and recomputes P&L; id and createdAt stay as stored; omit custom to keep stored answers. list_trades returns newest entryDate first unless order is asc, includes custom only when a live trade has answers, and lists live trades when no journal filter and no type are passed. Pass a backtest journal id or type=backtest for backtest trades (strategy, session, stopDistancePct, rResult, maxR). A shared journal never includes custom. delete_trade removes one live trade by id and does not delete backtest trades. get_stats is one live or backtest journal, by journalId or journal. list_plans and get_plan read trading plans and do not write them. Dates are ISO-8601.',
+    instructions: 'TradeOS journal tools for the signed-in API key. list_journals returns live and backtest journals (type, isBacktest, id, name; live rows also include exchange). Optional type is live or backtest. add_trade writes one live trade to journalId or journal (optional idempotencyKey); omitting both is rejected. Backtest journals are read-only. custom, when sent, is checked against settings/customTradeFields. update_trade patches one live trade by id and recomputes P&L; id and createdAt stay as stored; omit custom to keep stored answers. list_trades returns newest entryDate first unless order is asc, includes custom only when a live trade has answers, and lists live trades when no journal filter and no type are passed. Pass a backtest journal id or type=backtest for backtest trades (strategy, session, stopDistancePct, rResult, maxR). A shared journal never includes custom. delete_trade removes one live trade by id and does not delete backtest trades. get_stats is one live or backtest journal, by journalId or journal. Optional groupBy is session, setup, weekday, or hour. list_plans and get_plan read trading plans. list_daily_journals reads morning and evening entries. get_risk_rules reads live-journal risk rules and breach status. None of those three write. Dates are ISO-8601.',
   };
 }
 
