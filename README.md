@@ -282,7 +282,7 @@ Notes from experience:
 
 | What | Where | Who changes it |
 |---|---|---|
-| Marketing version `APP_VERSION` (currently `2.4.0`) | `src/utils/constants.js` | **by hand**, only for a user-visible milestone — see [`docs/VERSIONING.md`](docs/VERSIONING.md) |
+| Marketing version `APP_VERSION` (currently `2.4.1`) | `src/utils/constants.js` | **by hand**, only for a user-visible milestone — see [`docs/VERSIONING.md`](docs/VERSIONING.md) |
 | Cache version `CACHE_NAME` (`tradeos-vN`) | `public/sw.js` | **automatically** on every push to `main` (`scripts/bump-version.mjs`) — never edit it |
 
 ### Silent updates

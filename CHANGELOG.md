@@ -6,6 +6,14 @@ Entries are grouped by `APP_VERSION`. Releases are tagged `vX.Y.Z` on `main`. Fr
 
 None.
 
+## 2.4.1 - 2026-11-19
+
+PATCH. `APP_VERSION` moves to `2.4.1`.
+
+### Changed
+
+- #710 Public-portfolio prep: removed personal and internal docs, added LICENSE, translated the changelog to English, and hardened CI secret handling.
+
 ## 2.4.0 - 2026-11-11
 
 MINOR. `APP_VERSION` moves to `2.4.0`.

@@ -51,7 +51,7 @@ before releasing. Summary:
   `scripts/bump-version.mjs`) — this makes the service worker take over silently
   on the user's next open (there is no update prompt). Never touch it manually.
 - `APP_VERSION` (`src/utils/constants.js`) is the **marketing version, set by
-  hand**, currently `2.4.0`. A normal release does NOT require bumping
+  hand**, currently `2.4.1`. A normal release does NOT require bumping
   it. Bump it (semver MAJOR/MINOR/PATCH — see the guide) only for a
   user-visible milestone, and only as the owner's call. When in doubt, don't
   bump — just release.
