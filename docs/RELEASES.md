@@ -83,7 +83,8 @@ revert של merge commit <sha> על main, ו-rollback של Hosting ל-release ה
 
 | תאריך (ישראל) | מיזוג | מה נכנס, לפי היסטוריית git | תג | APP_VERSION |
 |--|--|--|--|--|
-| 2026-11-11 | ממתין למיזוג `dev` → `main` | #704 `9174dcd`, #705 `0360ec9`, #707 `4561f48` | v2.4.0 אחרי המיזוג ל-`main` | 2.4.0 |
+| 2026-11-19 | ממתין למיזוג `dev` → `main` | #710 `2725443` | v2.4.1 אחרי המיזוג ל-`main` | 2.4.1 |
+| 2026-11-11 | [#709](https://github.com/aviniazov7/TradeOS/pull/709) `298570f` | #704 `9174dcd`, #705 `0360ec9`, #707 `4561f48` | [v2.4.0](https://github.com/aviniazov7/TradeOS/releases/tag/v2.4.0) | 2.4.0 |
 | 2026-11-10 | [#703](https://github.com/aviniazov7/TradeOS/pull/703) `74f0a2e` | #701 `571e4e4` | [v2.3.1](https://github.com/aviniazov7/TradeOS/releases/tag/v2.3.1) | 2.3.1 |
 | 2026-11-10 | [#698](https://github.com/aviniazov7/TradeOS/pull/698) `7f7cfba` | #657–#697 | [v2.3.0](https://github.com/aviniazov7/TradeOS/releases/tag/v2.3.0) | 2.3.0 |
 | 2026-11-09 | [#655](https://github.com/aviniazov7/TradeOS/pull/655) `be50d54` | #643–#654 | אין | 2.2.1 |
