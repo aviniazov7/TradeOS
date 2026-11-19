@@ -10,11 +10,15 @@
 ![Cloudflare](https://img.shields.io/badge/Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=fff&style=for-the-badge)
 ![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=fff&style=for-the-badge)
 
+<br/>
+
+<img src="public/og-image.png" alt="TradeOS — Smart Trading Journal" width="720" />
+
 </div>
 
 # TradeOS — Trading Operating System
 
-A trading journal and analytics platform for crypto, stocks and futures traders: trade journal with R-multiples, live exchange sync, a live trading desk, backtesting, a psychology journal, market data, an AI coach and Web Push alerts. The product UI is **Hebrew, right-to-left** (this repository's documentation is in English, except the internal hand-over notes in `docs/NEXT.md` and `docs/VERSIONING.md`).
+A trading journal and analytics platform for crypto, stocks and futures traders: trade journal with R-multiples, live exchange sync, a live trading desk, backtesting, a psychology journal, market data, an AI coach and Web Push alerts. The product UI is **Hebrew, right-to-left**. This repository's documentation is in English, except the internal hand-over note in `docs/NEXT.md` and the versioning guide in `docs/VERSIONING.md`.
 
 **Live:** [https://tradeoslive.web.app](https://tradeoslive.web.app) · **Working from another machine?** Read [`docs/NEXT.md`](docs/NEXT.md) first (what is open, what shipped) and [`CLAUDE.md`](CLAUDE.md) (the rules for any AI agent or developer). Site ids `tradeos`, `tradeosapp`, and `tradeos-app` are reserved by other Firebase projects, so production uses site `tradeoslive`. The default Hosting site `tradeos-91a58` is not deployed; disable it with `firebase hosting:disable --project tradeos-91a58 --site tradeos-91a58` (it cannot be deleted).
 
@@ -83,7 +87,7 @@ Everything is **Web Push** (VAPID, encrypted payloads) keyed by user id — no e
 | Premium expiry | 3 days before and on the day |
 | Admin messages | one-off or bulk, sent by an admin |
 
-**Email** is limited to service emails (Premium receipts, coupon redemption) and an admin "come back" campaign. A one-time scan subscribes accounts that already exist and never stored a choice (explicit opt-outs are kept). New signups get an unchecked checkbox and the choice is saved either way, so they are not part of that scan; the Worker mails only profiles where `marketingEmails` is true. The subject starts with the Hebrew word for "advertisement", and every message has a one-click unsubscribe link plus `List-Unsubscribe`. The Worker re-checks each recipient server-side. Delivery is Gmail SMTP from `TradeOS <tradeos.app@gmail.com>` (worker-mailer on `cloudflare:sockets`, `smtp.gmail.com:465`). The app password is the Worker secret `GMAIL_APP_PASSWORD` — never in the repo. Each recipient gets their own message. Gmail's consumer cap is about 500/day; the Worker stops at 450 and reports per-recipient sent / failed / not-sent counts.
+**Email** is limited to service emails (Premium receipts, coupon redemption) and an admin "come back" campaign. A one-time scan subscribes accounts that already exist and never stored a choice (explicit opt-outs are kept). New signups get an unchecked checkbox and the choice is saved either way, so they are not part of that scan; the Worker mails only profiles where `marketingEmails` is true. The subject starts with the Hebrew word for "advertisement", and every message has a one-click unsubscribe link plus `List-Unsubscribe`. The Worker re-checks each recipient server-side. Delivery is SMTP (worker-mailer on `cloudflare:sockets`). The mailbox and its password are Worker secrets, not files in this repo. Each recipient gets their own message. The consumer mailbox cap is about 500 messages a day; the Worker stops at 450 and reports per-recipient sent, failed, and not-sent counts.
 
 ---
 
@@ -106,7 +110,7 @@ flowchart TD
     w --> ex["Exchanges (read-only)<br/>Bybit · MEXC · OKX · Bitget · Hyperliquid"]
     w --> data["Market data<br/>Bybit · Yahoo · CoinGecko · Bank of Israel · ForexFactory"]
     w --> ai["AI — Groq<br/>(Gemini wired but off)"]
-    w --> mail["Gmail SMTP — email"]
+    w --> mail["SMTP — email"]
 
     classDef firebase fill:#FFA000,stroke:#E65100,color:#000
     classDef cloudflare fill:#F38020,stroke:#A04200,color:#000
@@ -117,7 +121,7 @@ flowchart TD
 ```
 
 - **Hosting** serves the SPA with security headers (`firebase.json`); all dynamic work happens in the Worker or directly against Firestore under security rules.
-- **Two Workers, one codebase** (`worker/`): `trade-os` serves HTTP; `tradeos-alerts` runs the cron. Merging to `dev` or `main` updates **both production Workers**.
+- **Workers, one codebase** (`worker/`): `trade-os` serves HTTP and `tradeos-alerts` runs the cron. A push to `main` deploys both production Workers. A push to `dev` deploys only the staging Worker `trade-os-staging` and the Hosting channel `dev`.
 - Firestore is **shared** by staging and production (there is no separate staging database).
 
 ---
@@ -125,7 +129,7 @@ flowchart TD
 ## Security & privacy
 
 - **Tenant isolation** — Firestore rules give each user their own data only. On their own profile document users may write only an allowlist of fields (`plan`, `role`, `planExpires` and any privilege-looking field are server-only). The rules have emulator tests (`npm run test:rules`).
-- **Exchange API keys** are never stored in Firestore or the browser. They are sent once to the Worker and kept in KV encrypted with AES-GCM (`CREDS_ENCRYPTION_KEY`); Firestore holds only a "connected" marker. The Worker only calls **read** endpoints — it never places orders or withdraws. A scan on 2026-10-09 found 0 of 24 users with plaintext keys; `.github/workflows/scan-exchange-keys.yml` re-runs that check (read-only, counts only).
+- **Exchange API keys** are never stored in Firestore or the browser. They are sent once to the Worker and kept in KV encrypted with AES-GCM (`CREDS_ENCRYPTION_KEY`); Firestore holds only a "connected" marker. The Worker only calls **read** endpoints — it never places orders or withdraws. `.github/workflows/scan-exchange-keys.yml` re-runs a read-only check and prints counts only.
 - **Admins** can read most user data (trades, trading journals, plans, backtests) but **not** the mental journals, trade screenshots or settings.
 - **Account deletion is complete**: all data, the Auth account, encrypted keys, push subscriptions, the admin's private note, coupon markers, and the local browser cache; payment records are kept but anonymised and the audit entry keeps only an opaque id.
 - **Content-Security-Policy** is in report-only mode (see `firebase.json`); violations from real browsers are logged by the Worker route `POST /csp-report` (search "CSP report" in Cloudflare → trade-os → Observability). It will be enforced once a week of reports is clean.
@@ -174,30 +178,25 @@ TradeOS/
 
 ---
 
-## Accounts, ownership & credentials
+## Secrets
 
-| Service | Account | What lives there |
-|---|---|---|
-| GitHub | `aviniazov7` (personal), private repo `aviniazov7/TradeOS` | code, CI, CI secrets |
-| Firebase / Google Cloud | project `tradeos-91a58` (number `80529278454`); **Owners: `aviniazov18@gmail.com` (personal) and `tradeos.app@gmail.com` (app)**; the local `firebase` CLI is logged in as `aviniazov18@gmail.com` | Auth, Firestore, Hosting, Cloud Functions |
-| Cloudflare — **app account** | `tradeos.app@gmail.com` (workers.dev subdomain `tradeos`) | Workers `trade-os` (all HTTP), `tradeos-alerts` (cron, every 10 min), `trade-os-staging` (unused), KV namespace `ALERTS_KV` |
-| Cloudflare — personal | `aviniazov7@icloud.com` | **not** TradeOS: other workers (`safety-groq-proxy`, `workout-bot`, `pump-detector`) and `tradeos-google-auth`, which nothing in this repo references |
-| Gmail, Groq, Moralis | `GMAIL_APP_PASSWORD` (app password for `tradeos.app@gmail.com`), plus the other API keys, are stored as Worker secrets (below) | email sending, AI chat, wallet lookups |
+Values are not in this repository. Set Worker secrets in the Cloudflare dashboard for the app account (Workers → the TradeOS Worker → Settings → Variables and Secrets) or as GitHub Actions secrets. CI uploads the ones it knows on deploy; secrets that CI does not know survive deploys. Do not commit values, and do not point a local Wrangler login at a Cloudflare account that does not own these Workers.
 
-**Ownership policy (target):** every production asset has two Owners — the app account and the personal account — so losing one login (2FA, recovery) never locks the project out.
-- Firebase: **confirmed 2026-10-09** — both accounts are Owner under *Project settings → Users and permissions*.
-- Cloudflare: the personal account should be a member of the app account (*Manage account → Members*) with a Super Administrator role — **to be confirmed**; update this line when done.
+| Name | Used for |
+|---|---|
+| `CREDS_ENCRYPTION_KEY` | AES-GCM key for exchange credentials in KV |
+| `FIREBASE_SERVICE_ACCOUNT` | Admin SDK on the Worker and in CI |
+| `GROQ_API_KEY` | TradeAI |
+| `GEMINI_API_KEY` | Optional Gemini route (off unless `GEMINI_ENABLED` is true) |
+| `GMAIL_APP_PASSWORD` | Outbound SMTP |
+| `MORALIS_API_KEY` | Wallet lookups |
+| `VAPID_JWK` | Web Push |
+| `UNSUBSCRIBE_SECRET` | One-click email unsubscribe |
+| `MAIL_TO_ADMIN_OVERRIDE` | Optional admin mailbox override |
+| `CF_ACCOUNT_ID`, `CF_API_TOKEN` | Read-only Cloudflare analytics for the admin screen |
+| `CLOUDFLARE_API_TOKEN` | GitHub Actions deploy token for the app account |
 
-### Where credentials live
-
-- **Exchange API keys:** see [Security & privacy](#security--privacy).
-- **Worker secrets** (names only; values are never in the repo): `CREDS_ENCRYPTION_KEY`, `FIREBASE_SERVICE_ACCOUNT`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `GMAIL_APP_PASSWORD`, `MORALIS_API_KEY`, `VAPID_JWK`, `UNSUBSCRIBE_SECRET`, `MAIL_TO_ADMIN_OVERRIDE`, `CF_ACCOUNT_ID`, `CF_API_TOKEN`. `RESEND_API_KEY` / `MAIL_FROM_*` are no longer read. CI re-applies the ones it knows from GitHub secrets on every deploy (including `GMAIL_APP_PASSWORD` once that GitHub secret exists); the others (`CREDS_ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET`, …) were set once in the dashboard and survive deploys. Set `GMAIL_APP_PASSWORD` on **both** Workers (`trade-os` and `tradeos-alerts`). See `docs/OWNER_CHECKLIST.md` §6 for the exact commands.
-- **GitHub Actions secrets:** `CLOUDFLARE_API_TOKEN` (a token for the **app** Cloudflare account; the account id is set in `deploy.yml`), `FIREBASE_SERVICE_ACCOUNT`, plus the Worker secret values listed above.
-
-### Running `wrangler` / `firebase` locally — read this first
-
-- This machine's `wrangler` is logged in to the **personal** Cloudflare account, which does **not** contain the TradeOS Workers, so `wrangler secret put …` from here would target the wrong account. Set secrets in the dashboard (*Workers & Pages → trade-os → Settings → Variables and Secrets*) or use the app account's API token with `CLOUDFLARE_ACCOUNT_ID`.
-- Deploys go through GitHub Actions (see below); Firestore rules are the only manual deploy.
+`RESEND_API_KEY` and `MAIL_FROM_*` are no longer read. Exchange API keys are described in [Security & privacy](#security--privacy).
 
 ---
 
@@ -283,7 +282,7 @@ Notes from experience:
 
 | What | Where | Who changes it |
 |---|---|---|
-| Marketing version `APP_VERSION` (currently `2.1.0`) | `src/utils/constants.js` | **by hand**, only for a user-visible milestone — see [`docs/VERSIONING.md`](docs/VERSIONING.md) |
+| Marketing version `APP_VERSION` (currently `2.4.1`) | `src/utils/constants.js` | **by hand**, only for a user-visible milestone — see [`docs/VERSIONING.md`](docs/VERSIONING.md) |
 | Cache version `CACHE_NAME` (`tradeos-vN`) | `public/sw.js` | **automatically** on every push to `main` (`scripts/bump-version.mjs`) — never edit it |
 
 ### Silent updates
@@ -304,10 +303,11 @@ Gated on the Firestore field `role: "admin"` on the user's own document (set the
 
 | File | What it is |
 |---|---|
-| [`CLAUDE.md`](CLAUDE.md) | rules for any AI agent or developer: git flow, identity, build/lint policy, environments, accounts |
+| [`CLAUDE.md`](CLAUDE.md) | rules for any AI agent or developer: git flow, build/lint policy, environments |
+| [`CHANGELOG.md`](CHANGELOG.md) | release notes, in English, grouped by `APP_VERSION` |
 | [`docs/NEXT.md`](docs/NEXT.md) | hand-over note: current status and what is still open (Hebrew) |
 | [`docs/VERSIONING.md`](docs/VERSIONING.md) | when and how to bump the marketing version (Hebrew) |
-| [`docs/legal/DATA_INVENTORY.md`](docs/legal/DATA_INVENTORY.md) | data inventory for the privacy policy / terms (Hebrew, for the owner's lawyer) |
+| [`docs/legal/DATA_INVENTORY.md`](docs/legal/DATA_INVENTORY.md) | data inventory for the privacy policy / terms (Hebrew, for a lawyer) |
 | [`docs/qa/TRADEOS_QA_REPORT.md`](docs/qa/TRADEOS_QA_REPORT.md) | QA / security audit and how each finding was fixed |
 | [`docs/specs/`](docs/specs) | design specs (futures contracts, TradingView Charting Library) |
 
@@ -315,8 +315,10 @@ Gated on the Firestore field `role: "admin"` on the user's own document (set the
 
 ## Contributing (humans and AI agents)
 
-Follow [`CLAUDE.md`](CLAUDE.md): branch off `dev`, open a PR to `dev`, commit with the owner's identity and no third-party trailers, keep Firebase access inside `src/services/`, never bump versions by hand, make `npm run build` pass, add tests for logic you change, and deploy Firestore rules manually when they change. Promotion to `main` is the owner's call.
+Follow [`CLAUDE.md`](CLAUDE.md): branch off `dev`, open a PR to `dev`, write commits and changelog entries in English with no third-party trailers, keep Firebase access inside `src/services/`, never bump versions by hand, make `npm run build` pass, add tests for logic you change, and deploy Firestore rules manually when they change. Promotion to `main` is a maintainer decision.
 
 ## License
 
-Private project. All rights reserved.
+Copyright (c) 2026 Avraham Niazov. All rights reserved.
+
+Source is visible for portfolio purposes. No license is granted to use, copy, modify, or distribute this software. See [LICENSE](LICENSE).

@@ -32,7 +32,6 @@
     { "tag": "v1-ai-quota", "new_sqlite_classes": ["AiQuotaDO"] }
   ],
   "vars": {
-    "DEV_UID": "3eVK7Ej3F1Y2L2ziHJpmzFP7Q0u1",
     // Gemini routing for Premium chat. Kept OFF because the free Gemini tier
     // returns 429 "quota exceeded — check billing" (verified via /admin/ai-test
     // 2026-07-27) — activating it just wastes a doomed call before falling back
@@ -74,7 +73,6 @@
         { "tag": "v1-ai-quota", "new_sqlite_classes": ["AiQuotaDO"] }
       ],
       "vars": {
-        "DEV_UID": "3eVK7Ej3F1Y2L2ziHJpmzFP7Q0u1",
         "GEMINI_ENABLED": "false"
       }
     }

@@ -38,7 +38,9 @@ jobs:
   deploy:
     # refs/heads/dev is .github/workflows/deploy-dev.yml. A pull request into
     # dev checks out refs/pull/N/merge, so its preview channel still runs here.
-    if: github.ref != 'refs/heads/dev'
+    # Fork pull requests must not receive this job's secrets. Push and
+    # workflow_dispatch are same-repo by definition.
+    if: github.ref != 'refs/heads/dev' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -88,7 +90,7 @@ jobs:
         run: |
           node scripts/bump-version.mjs
           git config user.name 'Avraham Niazov'
-          git config user.email 'aviniazov7@icloud.com'
+          git config user.email 'aviniazov7@users.noreply.github.com'
           # index.html is rewritten too (og-image ?v= cache-buster) — leaving
           # it out of the commit made the repo drift behind production forever.
           git add src/utils/constants.js public/sw.js index.html
@@ -110,7 +112,9 @@ jobs:
         run: npm run build
 
       - name: Write Firebase service account
-        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/firebase-sa.json"
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
 
       - name: Ensure Hosting site and authorized domains
         env:
@@ -172,8 +176,8 @@ jobs:
           MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
           MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
           MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
-          # Gmail app password for tradeos.app@gmail.com. Empty → skip, so a
-          # value already set in the Cloudflare dashboard is left as-is.
+          # Outbound-mail password. Empty → skip, so a value already set in
+          # the Cloudflare dashboard is left as-is.
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           # Cloudflare Analytics (read-only) — powers the admin "תשתית" quota card.
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -235,8 +239,8 @@ jobs:
           MAIL_FROM_ADDRESS: ${{ secrets.MAIL_FROM_ADDRESS }}
           MAIL_FROM_NAME: ${{ secrets.MAIL_FROM_NAME }}
           MAIL_TO_ADMIN_OVERRIDE: ${{ secrets.MAIL_TO_ADMIN_OVERRIDE }}
-          # Gmail app password for tradeos.app@gmail.com. Empty → skip, so a
-          # value already set in the Cloudflare dashboard is left as-is.
+          # Outbound-mail password. Empty → skip, so a value already set in
+          # the Cloudflare dashboard is left as-is.
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           # Cloudflare Analytics (read-only) — powers the admin "תשתית" quota card.
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
