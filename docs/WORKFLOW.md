@@ -54,7 +54,7 @@ The script reads `env.staging` and exits unless the Worker name is `trade-os-sta
 
 ## Manual steps
 
-Do these in the app accounts (Cloudflare account that owns `trade-os`, Firebase project `tradeos-91a58`). The laptop `wrangler` login is the personal Cloudflare account and must not deploy.
+Do these in the app accounts (Cloudflare account that owns `trade-os`, Firebase project `tradeos-91a58`). A local Wrangler login that is not that account must not deploy.
 
 ### 1. Put this workflow on `dev`
 
