@@ -216,7 +216,6 @@ describe('auth domain and public site URL', () => {
       'index.html',
       'public/sitemap.xml',
       'public/robots.txt',
-      'docs/OWNER_CHECKLIST.md',
       'docs/legal/DATA_INVENTORY.md',
       'docs/qa/TRADEOS_QA_REPORT.md',
     ]) {
@@ -225,8 +224,8 @@ describe('auth domain and public site URL', () => {
       expect(text, file).not.toMatch(/href="https:\/\/tradeos-91a58\.web\.app/);
     }
     expect(read('index.html')).toMatch(/property="og:url" content="https:\/\/tradeoslive\.web\.app"/);
-    expect(read('docs/OWNER_CHECKLIST.md')).toMatch(/firebase hosting:disable --project tradeos-91a58 --site tradeos-91a58/);
-    expect(read('docs/OWNER_CHECKLIST.md')).not.toMatch(/tradeos-91a58\.web\.app/);
+    expect(read('README.md')).toMatch(/firebase hosting:disable --project tradeos-91a58 --site tradeos-91a58/);
+    expect(read('README.md')).not.toMatch(/tradeos-91a58\.web\.app/);
   });
 });
 

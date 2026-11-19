@@ -113,7 +113,7 @@ Legend: `[x]` fixed · `[~]` partly fixed, or fixed in code with a manual step l
   - **Already handled by the app:** When a user opens the exchange tab (`ExchangeSettings.jsx`), legacy keys are re-stored in the encrypted Worker store and stripped from Firestore, but only if every re-store succeeded. Users who never open that tab keep theirs.
   - **Decision:** No bulk delete. Deleting keys that were never re-stored would silently disconnect users from their exchange.
   - **Tool added:** the manual, read-only workflow **Scan plaintext exchange keys** (Actions → Run workflow; `scripts/scan-plaintext-exchange-keys.mjs`) prints counts only: users scanned, how many still hold plaintext keys, and by exchange. No uids and no key values.
-  - **Result (2026-10-09, run #1):** 24 users scanned, 1 with a `settings/exchanges` document, **0 holding plaintext keys**. Nothing to clean up.
+  - **Result (2026-10-09, run #1):** the read-only count found no plaintext keys. Nothing to clean up.
 
 ---
 

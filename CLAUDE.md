@@ -36,10 +36,11 @@ Feature and pull-request preview channels live 7 days then auto-delete. The `dev
 
 ### Identity
 
-- Author: `Avraham Niazov <aviniazov7@icloud.com>`
+- Author name: `Avraham Niazov`. Do not commit a personal email address.
 - **No third-party trailers** (no Co-authored-by, no "Generated with…") in commits.
-- **Commit messages and PR titles are always in English.** (Chat/summaries stay
-  in Hebrew; git history is English-only. Never rewrite existing commits.)
+- **Commit messages and PR titles are always in English.** Changelog entries
+  are English too. (Chat/summaries stay in Hebrew; git history is English-only.
+  Never rewrite existing commits.)
 
 ## Release workflow (version bump)
 
@@ -50,7 +51,7 @@ before releasing. Summary:
   `scripts/bump-version.mjs`) — this makes the service worker take over silently
   on the user's next open (there is no update prompt). Never touch it manually.
 - `APP_VERSION` (`src/utils/constants.js`) is the **marketing version, set by
-  hand**, currently pinned at `2.1.0`. A normal release does NOT require bumping
+  hand**, currently `2.4.0`. A normal release does NOT require bumping
   it. Bump it (semver MAJOR/MINOR/PATCH — see the guide) only for a
   user-visible milestone, and only as the owner's call. When in doubt, don't
   bump — just release.
@@ -109,16 +110,15 @@ changes. Firebase Storage is not used.
 - **Cron triggers:** the alerts worker's `[env.staging]` has an empty cron
   list. That env is not deployed. Production cron is `*/10` on `tradeos-alerts`.
 
-## Accounts — read before touching secrets
+## Secrets
 
-The TradeOS Workers live in the **app's** Cloudflare account. The local
-`wrangler` is logged in to the owner's **personal** Cloudflare account, which
-does not contain them — so never run `wrangler secret put` / `deploy` from the
-machine without an explicit `CLOUDFLARE_ACCOUNT_ID` + the app account's token.
-New Worker secrets are added in the dashboard (*Workers & Pages → trade-os →
-Settings → Variables and Secrets*) or via CI. Exchange API keys are stored only
-encrypted in KV (never Firestore) — see "Accounts, ownership & credentials" in
-`README.md` for the full map.
+Worker secrets and CI secrets are not stored in this repo. Add them in the
+Cloudflare dashboard for the account that owns the TradeOS Workers
+(*Workers & Pages → trade-os → Settings → Variables and Secrets*) or via CI.
+Do not run secret or deploy commands while the local Wrangler session is
+logged into a different Cloudflare account. Exchange API keys are stored only
+encrypted in KV (never Firestore). Secret names are listed under "Secrets"
+in `README.md`.
 
 ## Admin panel
 

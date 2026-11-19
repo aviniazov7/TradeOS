@@ -186,7 +186,7 @@ trade-os/
 ```javascript
 {
   displayName: "אברהם ניאזוב",
-  email: "aviniazov7@icloud.com",
+  email: "user@example.com",
   photoURL: "https://...",
   createdAt: Timestamp,
   settings: {
