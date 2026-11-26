@@ -4,7 +4,9 @@ Entries are grouped by `APP_VERSION`. Releases are tagged `vX.Y.Z` on `main`. Fr
 
 ## Unreleased
 
-None.
+### Changed
+
+- The prop-firm challenge card shows the balance, P&L, profit target, and remaining amount in two compact rows.
 
 ## 2.4.1 - 2026-11-19
 
