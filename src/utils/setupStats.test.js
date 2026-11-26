@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeSetupStats, setupLabel, tradeSetups } from './setupStats';
+import { computeSetupStats, effectiveSetups, setupLabel, tradeSetups } from './setupStats';
 
 // entry 100, stop 90, position notional 100 → 1 unit → $10 of risk.
 // netPnl 20 is +2R, netPnl -10 is -1R.
@@ -35,9 +35,28 @@ describe('tradeSetups', () => {
     const setups = Array.from({ length: 12 }, (_, i) => `s${i}`);
     expect(tradeSetups({ setups })).toHaveLength(8);
   });
+
+  it('uses the entry trigger only when no setups are stored', () => {
+    expect(effectiveSetups({})).toEqual([]);
+    expect(effectiveSetups({ trigger: '  lpsy ' })).toEqual(['LPSY']);
+    expect(effectiveSetups({ trigger: 'breakout' })).toEqual(['breakout']);
+    expect(effectiveSetups({ setups: ['LPS'], trigger: 'Spring' })).toEqual(['LPS']);
+    expect(effectiveSetups({ setups: [], trigger: 'SOS' })).toEqual(['SOS']);
+  });
 });
 
 describe('computeSetupStats', () => {
+  it('counts a trigger-only trade once and does not add the trigger beside stored setups', () => {
+    const stats = computeSetupStats([
+      closed({ setups: ['LPS'], trigger: 'Spring', netPnl: 20, result: 'win' }),
+      closed({ setups: [], trigger: 'breakout', netPnl: -10, result: 'loss' }),
+      closed({ trigger: 'LPSY', netPnl: 20, result: 'win' }),
+    ]);
+    expect(stats.map((row) => row.name).sort()).toEqual(['LPS', 'LPSY', 'breakout']);
+    expect(stats.find((row) => row.name === 'Spring')).toBeUndefined();
+    expect(stats.every((row) => row.count === 1)).toBe(true);
+  });
+
   it('returns nothing when trades have no setups, including open ones', () => {
     expect(computeSetupStats([
       closed({ setups: [] }),

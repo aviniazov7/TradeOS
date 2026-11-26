@@ -10,6 +10,7 @@ Entries are grouped by `APP_VERSION`. Releases are tagged `vX.Y.Z` on `main`. Fr
 
 ### Changed
 
+- The new-trade form keeps Entry trigger and no longer asks for Setup. The trigger list includes the names that used to be only on Setup (LPS, breakout, UTAD, UTAD/LPSY short), and a custom trigger is still added from the same menu. Stored setup tags on older trades are left as they are and still show on the trade, in filters, in stats, and in the CSV. A trade with no stored setups is grouped and exported by its entry trigger. `POST` and `PATCH /api/v1/trades` still accept `setups` and `trigger`. MCP `add_trade` and `update_trade` are unchanged and still do not accept those fields.
 - The prop-firm challenge card shows the balance, P&L, profit target, and remaining amount in two compact rows.
 - The income and expenses page uses a compact monthly summary (income, expenses, net per currency) and a dense entry list. Calculations are unchanged.
 

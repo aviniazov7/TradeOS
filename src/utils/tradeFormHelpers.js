@@ -5,7 +5,7 @@
  * itself stays in calculations.js — these only shape the INPUTS fed to it.
  */
 import { initialStopLoss, isStopOnRiskSide } from './calculations';
-import { getContractSpec, TRIGGERS } from './constants';
+import { getContractSpec, WYCKOFF_TRIGGER_NAMES } from './constants';
 
 const num = (v) => {
   const n = parseFloat(v);
@@ -321,7 +321,7 @@ export function loadLastTradeChoices(journalId, storage = globalThis.localStorag
   }
 }
 
-const WYCKOFF_TRIGGERS = new Set(TRIGGERS);
+const WYCKOFF_TRIGGERS = new Set(WYCKOFF_TRIGGER_NAMES);
 
 function isWyckoffStrategy(strategy) {
   const name = String(strategy || '').trim().toLowerCase();

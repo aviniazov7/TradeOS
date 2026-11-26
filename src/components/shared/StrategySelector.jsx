@@ -42,6 +42,7 @@ export default function StrategySelector({
   placeholder = 'בחר...',
   required = false,
   hint = '',
+  labels = {},
 }) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -122,7 +123,8 @@ export default function StrategySelector({
     setOpen(false);
   };
 
-  const displayText = value || placeholder;
+  const labelOf = (name) => labels[name] || name;
+  const displayText = value ? labelOf(value) : placeholder;
 
   // Leave room for the sticky footer (add/manage row) when capping the list.
   const listMax = coords ? Math.max(66, coords.maxHeight - 40) : 110;
@@ -146,7 +148,7 @@ export default function StrategySelector({
           <div className="overflow-y-auto p-2 space-y-1" style={{ maxHeight: listMax }}>
             {strategies.map((s) => (
               <div key={s} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-bg-tertiary transition-colors">
-                <span className="text-xs text-text-primary">{s}</span>
+                <span className="text-xs text-text-primary">{labelOf(s)}</span>
                 <button type="button" onClick={() => onRemove?.(s)} className="p-0.5 text-text-muted hover:text-loss transition-colors cursor-pointer">
                   <X className="w-3 h-3" />
                 </button>
@@ -178,7 +180,7 @@ export default function StrategySelector({
                   value === s ? 'bg-accent-primary/10 text-accent-primary font-medium' : 'text-text-primary hover:bg-bg-tertiary'
                 }`}
               >
-                {s}
+                {labelOf(s)}
               </button>
             ))}
             {strategies.length === 0 && (

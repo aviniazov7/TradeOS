@@ -4,7 +4,7 @@ import { formatDate, formatPrice, formatCurrency, formatPercent, formatSignedR }
 import { cryptoQuantityPnl, formatQuoteAmount, formatSymbolPrice } from '../../utils/pairCatalog';
 import { isClosedTrade, safePnl, signedTradeR, tradeShownPercent, usesContractMath } from '../../utils/calculations';
 import { buildAccountReturnBook } from '../../utils/accountReturn';
-import { setupLabel, tradeSetups } from '../../utils/setupStats';
+import { effectiveSetups, setupLabel } from '../../utils/setupStats';
 import { getExchangeLogo } from '../../utils/constants';
 import TradeDetailModal from './TradeDetailModal';
 import CoinIcon from '../shared/CoinIcon';
@@ -219,7 +219,7 @@ export default function TradeTable({
                     {/* The date always shows in full; only a long strategy name is cut. */}
                     <span className="text-text-muted shrink-0 num-mono">{formatDate(trade.entryDate)}</span>
                     {trade.strategy && <span className="text-text-muted truncate min-w-0">· {trade.strategy}</span>}
-                    {tradeSetups(trade)[0] && <span className="text-text-muted truncate min-w-0">· {setupLabel(tradeSetups(trade)[0])}</span>}
+                    {effectiveSetups(trade)[0] && <span className="text-text-muted truncate min-w-0">· {setupLabel(effectiveSetups(trade)[0])}</span>}
                   </span>
                   {done && (onAccount || shownPct?.percent != null) && (
                     <span className="num-mono shrink-0 inline-flex items-center gap-1.5" dir="ltr">
@@ -310,9 +310,9 @@ export default function TradeTable({
                     <td className="py-2.5 px-2 text-text-secondary max-w-[140px] truncate"
                       title={[
                         Number.isFinite(trade.checklistAdherence) ? `הצמדות לצ׳קליסט התוכנית: ${trade.checklistAdherence}%${trade.planName ? ` · ${trade.planName}` : ''}` : '',
-                        tradeSetups(trade).map(setupLabel).join(' · '),
+                        effectiveSetups(trade).map(setupLabel).join(' · '),
                       ].filter(Boolean).join(' · ') || undefined}>
-                      {[trade.strategy, tradeSetups(trade)[0] && setupLabel(tradeSetups(trade)[0])].filter(Boolean).join(' · ') || '—'}
+                      {[trade.strategy, effectiveSetups(trade)[0] && setupLabel(effectiveSetups(trade)[0])].filter(Boolean).join(' · ') || '—'}
                     </td>
                     <td className="py-2.5 px-2 text-text-muted whitespace-nowrap">{formatDate(trade.entryDate)}</td>
                     <td className="py-2.5 px-2 text-text-primary whitespace-nowrap num-mono">{formatSymbolPrice(trade.entryPrice, trade.pair)}</td>

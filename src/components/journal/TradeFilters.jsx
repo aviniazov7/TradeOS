@@ -3,7 +3,7 @@ import { Search, X, SlidersHorizontal } from 'lucide-react';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { TAG_LABELS } from '../../utils/constants';
 import { mistakeLabel } from '../../utils/tagMistakeStats';
-import { setupLabel, tradeSetups } from '../../utils/setupStats';
+import { effectiveSetups, setupLabel } from '../../utils/setupStats';
 import SelectDropdown from '../shared/SelectDropdown';
 import DateField from '../shared/DateField';
 
@@ -46,7 +46,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
 
   const allSetups = useMemo(() => {
     const names = new Set();
-    trades.forEach((t) => tradeSetups(t).forEach((name) => names.add(name)));
+    trades.forEach((t) => effectiveSetups(t).forEach((name) => names.add(name)));
     if (filters.setup) names.add(filters.setup);
     return [...names].sort((a, b) => setupLabel(a).localeCompare(setupLabel(b), 'he'));
   }, [trades, filters.setup]);
@@ -126,7 +126,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
                 type="text"
                 value={filters.search}
                 onChange={(e) => set('search', e.target.value)}
-                placeholder="חיפוש: זוג, סטאפ, אסטרטגיה, הערה…"
+                placeholder="חיפוש: זוג, טריגר, אסטרטגיה, הערה…"
                 className="bg-transparent text-xs text-text-primary placeholder-text-muted outline-none w-full"
               />
             </div>
@@ -169,7 +169,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
                     value={filters.setup}
                     onChange={(val) => set('setup', val)}
                     options={setupOptions}
-                    placeholder="כל הסטאפים"
+                    placeholder="כל הטריגרים"
                     allowClear
                     compact
                   />
@@ -224,7 +224,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
             type="text"
             value={filters.search}
             onChange={(e) => set('search', e.target.value)}
-            placeholder="חיפוש: זוג, סטאפ, אסטרטגיה, הערה…"
+            placeholder="חיפוש: זוג, טריגר, אסטרטגיה, הערה…"
             className="bg-transparent text-xs text-text-primary placeholder-text-muted outline-none w-full"
           />
         </div>
@@ -254,7 +254,7 @@ export default function TradeFilters({ filters, onChange, trades = [] }) {
             value={filters.setup}
             onChange={(val) => set('setup', val)}
             options={setupOptions}
-            placeholder="כל הסטאפים"
+            placeholder="כל הטריגרים"
             allowClear
             compact
           />

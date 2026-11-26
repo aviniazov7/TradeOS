@@ -243,6 +243,8 @@ If `riskAmount` is omitted or 0, and the entry, stop, and size can price the ris
 
 The owner's `GET` and `POST` responses include `custom` when the trade has answers. A shared journal does not. Sharing never copies `custom`.
 
+`trigger` is the entry trigger (a string, at most 80 characters). `setups` is the older list of setup names (at most 8 strings, 40 characters each). The trade form no longer writes `setups`; it writes `trigger`. `POST` and `PATCH` still accept both. Omitting `setups` on `PATCH` leaves the stored list as it is. Sending `setups` still replaces that list. Nothing here rewrites existing trades.
+
 Optional header `Idempotency-Key` (8–128 printable characters). The handler reserves one trade id on that key before it writes the trade. A repeat returns that same trade and does not write another one, including when the first attempt saved the trade but could not mark the key complete. The first response is `201`. A replay is `200` with `idempotentReplay: true`. A second request that arrives while the first is still in progress, before a trade has been stored, is `409` for 60 seconds. After that the same reserved id is used again, so a late retry still cannot create a second trade.
 
 ```bash
@@ -441,7 +443,7 @@ Each group is `{ key, count, wins, losses, breakeven, winRate, totalPnl, totalR,
 | `groupBy` | Live key | Backtest key |
 |---|---|---|
 | `session` | stored `session`, or the Israel session of `entryDate` | stored `session`, or `לא ידוע` |
-| `setup` | each name in `setups` (`ללא סטאפ` when the trade has none). A trade with two setups is counted in both | `strategy` (the setup), or `ללא אסטרטגיה` |
+| `setup` | each stored name in `setups`. When `setups` is empty, the entry `trigger` is the one key. `ללא סטאפ` when both are empty. A trade with stored setups is counted in each of them and is not also counted under its trigger | `strategy` (the setup), or `ללא אסטרטגיה` |
 | `weekday` | `Sun` … `Sat` in Asia/Jerusalem, from `entryDate` | same, from `date` (or `createdAt`) |
 | `hour` | `00`–`23` in Asia/Jerusalem | same |
 

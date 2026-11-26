@@ -46,7 +46,7 @@ import { TAG_LABELS } from '../../utils/constants';
 import { tradeHasMistake } from '../../utils/tagMistakeStats';
 import { tradeMatchesCustom } from '../../utils/customTradeFields';
 import { useCustomTradeFields } from '../../hooks/useCustomTradeFields';
-import { setupLabel, tradeSetups } from '../../utils/setupStats';
+import { effectiveSetups, setupLabel } from '../../utils/setupStats';
 import { pageVariants, pageTransition } from '../../utils/animations';
 import { TRADE_PREFILL_KEY } from '../../utils/tradeFormHelpers';
 import { evaluateJournalRisk } from '../../utils/journalRiskRules';
@@ -425,7 +425,8 @@ export default function TradeJournal() {
     const matchesSearch = (t) => [
       t.pair, t.strategy, t.notes, t.entryReason,
       ...(Array.isArray(t.tags) ? t.tags.map((tag) => `${tag} ${TAG_LABELS[tag] || ''}`) : []),
-      ...tradeSetups(t).map((name) => `${name} ${setupLabel(name)}`),
+      t.trigger,
+      ...effectiveSetups(t).map((name) => `${name} ${setupLabel(name)}`),
     ].some((v) => typeof v === 'string' && v.toLowerCase().includes(q));
     return trades.filter((t) => {
       if (pendingDeletes.has(t.id)) return false;
@@ -440,7 +441,7 @@ export default function TradeJournal() {
         if (!day || (filters.from && day < filters.from) || (filters.to && day > filters.to)) return false;
       }
       if (filters.strategy && t.strategy !== filters.strategy) return false;
-      if (filters.setup && !tradeSetups(t).includes(filters.setup)) return false;
+      if (filters.setup && !effectiveSetups(t).includes(filters.setup)) return false;
       if (filters.timeframe && (filters.timeframe === 'N/A' ? !!t.timeframe : t.timeframe !== filters.timeframe)) return false;
       if (filters.tag && !(Array.isArray(t.tags) ? t.tags : []).some((tag) => typeof tag === 'string' && tag.trim() === String(filters.tag).trim())) return false;
       if (filters.mistake && !tradeHasMistake(t, filters.mistake)) return false;

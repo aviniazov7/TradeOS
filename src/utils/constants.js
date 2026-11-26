@@ -210,13 +210,39 @@ export const STRATEGIES = [
   'AMD',
 ];
 
-export const TRIGGERS = [
+// Wyckoff events. The entry-trigger menu hides these unless the strategy is
+// Wyckoff. A name the trader added themselves is not in this list.
+export const WYCKOFF_TRIGGER_NAMES = [
+  'LPS',
   'Spring',
+  'UTAD',
   'LPSY',
   'SOS',
   'Upthrust',
   'BU/LPS',
+  'UTAD/LPSY short',
 ];
+
+// Entry triggers. This is the single list on the trade form. It includes the
+// names that used to live only on the setup multi-select (LPS, breakout,
+// UTAD, UTAD/LPSY short). Spring and LPSY were already here. `breakout` is
+// not a Wyckoff event, so it stays available on every strategy.
+export const TRIGGERS = [
+  'LPS',
+  'Spring',
+  'breakout',
+  'UTAD',
+  'LPSY',
+  'SOS',
+  'Upthrust',
+  'BU/LPS',
+  'UTAD/LPSY short',
+];
+
+export const TRIGGER_LABELS = {
+  breakout: 'פריצה',
+  'UTAD/LPSY short': 'UTAD/LPSY שורט',
+};
 
 export const TIMEFRAMES = ['15m', '30m', '1H', '4H'];
 
