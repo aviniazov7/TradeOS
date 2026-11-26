@@ -399,6 +399,10 @@ describe('fresh trade choices', () => {
     expect(triggerFitsStrategy('Wyckoff', 'Spring')).toBe(true);
     expect(triggerFitsStrategy('ויקוף', 'SOS')).toBe(true);
     expect(triggerFitsStrategy('Order Block', 'BOS')).toBe(true);
+    expect(triggerFitsStrategy('Order Block', 'breakout')).toBe(true);
+    expect(triggerFitsStrategy('Order Block', 'LPS')).toBe(false);
+    expect(triggerFitsStrategy('Order Block', 'UTAD')).toBe(false);
+    expect(triggerFitsStrategy('Wyckoff', 'UTAD/LPSY short')).toBe(true);
     expect(triggerFitsStrategy('Order Block', '')).toBe(true);
   });
 

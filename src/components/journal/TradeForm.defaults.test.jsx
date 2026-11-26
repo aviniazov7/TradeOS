@@ -16,7 +16,7 @@ vi.mock('../../hooks/useUserTimeframes', () => ({
 }));
 vi.mock('../../hooks/useUserTriggers', () => ({
   useUserTriggers: () => ({
-    allTriggers: ['Spring', 'LPSY', 'SOS', 'Upthrust', 'BU/LPS', 'BOS'],
+    allTriggers: ['LPS', 'Spring', 'breakout', 'UTAD', 'LPSY', 'SOS', 'Upthrust', 'BU/LPS', 'UTAD/LPSY short', 'BOS'],
     addTrigger: () => {},
     removeTrigger: () => {},
   }),
@@ -104,6 +104,11 @@ describe('new trade defaults', () => {
     click(buttonNamed('Wyckoff'));
     click(buttonNamed('בחר טריגר...'));
     expect(buttonNamed('Spring')).toBeTruthy();
+    expect(buttonNamed('LPS')).toBeTruthy();
+    expect(buttonNamed('UTAD')).toBeTruthy();
+    expect(buttonNamed('פריצה')).toBeTruthy();
+    expect(buttonNamed('טריגר מותאם')).toBeTruthy();
+    expect(buttonNamed('סטאפ מותאם')).toBeFalsy();
     click(buttonNamed('Spring'));
     expect(buttonNamed('Spring')).toBeTruthy();
 
@@ -114,7 +119,11 @@ describe('new trade defaults', () => {
 
     click(buttonNamed('בחר טריגר...'));
     expect(buttonNamed('Spring')).toBeFalsy();
+    expect(buttonNamed('LPS')).toBeFalsy();
+    expect(buttonNamed('פריצה')).toBeTruthy();
     expect(buttonNamed('BOS')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('סטאפ מותאם');
+    expect(document.body.textContent).not.toContain('LPS, Spring, פריצה');
   });
 
   it('keeps your own fields on the ticket and opens the editor from the header', () => {

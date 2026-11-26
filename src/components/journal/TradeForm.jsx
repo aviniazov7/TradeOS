@@ -14,8 +14,8 @@ import NumberStepper from '../shared/NumberStepper';
 import TimeframeSelector from '../shared/TimeframeSelector';
 import StrategySelector from '../shared/StrategySelector';
 import MultiSelector from '../shared/MultiSelector';
-import { MISTAKE_LABELS, TAG_LABELS, SESSIONS, getContractSpec, instrumentMenuOptions, DEFAULT_LEVERAGE } from '../../utils/constants';
-import { SETUP_LABELS, tradeSetups } from '../../utils/setupStats';
+import { MISTAKE_LABELS, TAG_LABELS, SESSIONS, getContractSpec, instrumentMenuOptions, DEFAULT_LEVERAGE, TRIGGER_LABELS } from '../../utils/constants';
+import { tradeSetups } from '../../utils/setupStats';
 import { MAX_TRADE_CHART_LINKS, chartLinksForEditor, chartLinksToSave } from '../../utils/tradingViewLink';
 import { useUserStrategies } from '../../hooks/useUserStrategies';
 import { useUserTimeframes } from '../../hooks/useUserTimeframes';
@@ -263,11 +263,24 @@ function TradeForm({
   const { allTimeframes, addTimeframe, removeTimeframe } = useUserTimeframes();
   const { allTriggers, addTrigger, removeTrigger } = useUserTriggers();
   const { allTags, addTag, removeTag } = useUserTags();
-  const { allSetups, addSetup, removeSetup } = useUserSetups();
+  // Custom names the trader added on the old setup list. Presets now live on
+  // the trigger list, so only the extras are merged in.
+  const { customSetups = [] } = useUserSetups();
   const { allMistakes, addMistake, removeMistake } = useUserMistakes();
   const { plans } = useTradingPlans();
   const { activeJournal, activeJournalId } = useJournalContext();
   const [form, setForm] = useState(defaultForm);
+  const triggerChoices = useMemo(() => {
+    const merged = [];
+    const seen = new Set();
+    for (const name of [...(allTriggers || []), ...(customSetups || [])]) {
+      const trimmed = String(name || '').trim();
+      if (!trimmed || seen.has(trimmed)) continue;
+      seen.add(trimmed);
+      merged.push(trimmed);
+    }
+    return triggersForStrategy(form.strategy, merged, form.trigger);
+  }, [allTriggers, customSetups, form.strategy, form.trigger]);
   const [saving, setSaving] = useState(false);
   // Fees follow the journal's commission preset until the user types a fee.
   // New trades start in auto mode; an existing trade keeps its stored fees
@@ -1350,7 +1363,10 @@ function TradeForm({
           checklistAdherence: form.planId ? adherencePct : null,
         } : {}),
         tags: form.tags || [],
-        setups: tradeSetups({ setups: form.setups }),
+        // The form no longer edits setups. An older trade keeps the list it
+        // already stored. A new trade stores an empty list; readers use
+        // `trigger` when that list is empty.
+        setups: trade ? tradeSetups(trade) : [],
         ...(customFieldsReady && (customFields.length || tradeHasCustom(trade))
           ? { custom: customPayload(form.custom, customFields) }
           : {}),
@@ -1727,27 +1743,14 @@ function TradeForm({
                 <StrategySelector
                   value={form.trigger}
                   onChange={(t) => update('trigger', t)}
-                  strategies={triggersForStrategy(form.strategy, allTriggers, form.trigger)}
+                  strategies={triggerChoices}
                   onAdd={addTrigger}
                   onRemove={removeTrigger}
+                  labels={TRIGGER_LABELS}
                   addLabel="טריגר מותאם"
                   inputPlaceholder="שם טריגר..."
                   emptyText="אין טריגרים"
                   placeholder="בחר טריגר..."
-                />
-              </Field>
-              <Field label="סטאפ" pick className="col-span-2 md:col-span-12">
-                <MultiSelector
-                  values={form.setups || []}
-                  onChange={(arr) => update('setups', tradeSetups({ setups: arr }))}
-                  options={allSetups}
-                  labels={SETUP_LABELS}
-                  onAdd={addSetup}
-                  onRemove={removeSetup}
-                  addLabel="סטאפ מותאם"
-                  inputPlaceholder="שם סטאפ..."
-                  emptyText="אין סטאפים"
-                  placeholder="LPS, Spring, פריצה…"
                 />
               </Field>
               <Field label="סשן" className="col-span-2 md:col-span-12"

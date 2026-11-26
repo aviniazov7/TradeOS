@@ -36,7 +36,7 @@ export function setupLabel(name) {
  * Clean whatever is stored on a trade into a short unique list.
  * Absent, null, or a non-list becomes []. A comma-separated string (a dirty
  * import) is split. Known presets are canonicalized so "spring" and "Spring"
- * are one setup.
+ * are one setup. This reads the stored `setups` field only.
  */
 export function tradeSetups(trade) {
   const raw = trade?.setups;
@@ -59,8 +59,24 @@ export function tradeSetups(trade) {
 }
 
 /**
+ * Tags to count, filter, and export.
+ * Stored setups win, so an older trade stays in the buckets it already has
+ * and is not also counted under its entry trigger.
+ * The trade form no longer writes setups. A trade with an empty list is
+ * counted once under its entry trigger. No setups and no trigger is [].
+ */
+export function effectiveSetups(trade) {
+  const stored = tradeSetups(trade);
+  if (stored.length) return stored;
+  const trigger = String(trade?.trigger ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_SETUP_LENGTH);
+  if (!trigger) return [];
+  return [PRESET_BY_KEY.get(trigger.toLowerCase()) || trigger];
+}
+
+/**
  * Stats for each setup, over CLOSED trades only. A trade tagged with two
- * setups counts in both. Trades with no setups are skipped — they stay in
+ * setups counts in both. A closed trade with no stored setups counts once
+ * under its entry trigger. Trades with neither are skipped — they stay in
  * every other stat.
  *
  * avgNetR is the mean of signed net R (fees inside the number), the same
@@ -76,7 +92,7 @@ export function computeSetupStats(trades) {
   const buckets = new Map();
   for (const t of trades || []) {
     if (!isClosedTrade(t)) continue;
-    const setups = tradeSetups(t);
+    const setups = effectiveSetups(t);
     if (!setups.length) continue;
     const pnl = safePnl(t);
     const r = signedTradeR(t);

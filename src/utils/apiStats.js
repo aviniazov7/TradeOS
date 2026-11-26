@@ -2,7 +2,7 @@ import { calculateMaxStreaks, initialRiskUsd, safePnl, signedTradeR, winRateOf }
 import { computeDashboardStats, sliceTradesForStats, windowBounds } from './dashboardStats';
 import { jerusalemMinutes } from './journalRiskRules.js';
 import { getSessionFromDate, SESSION_UNKNOWN } from './sessions.js';
-import { tradeSetups } from './setupStats.js';
+import { effectiveSetups } from './setupStats.js';
 
 const GROUP_BY = new Set(['session', 'setup', 'weekday', 'hour']);
 
@@ -37,7 +37,9 @@ function groupKeys(trade, groupBy, mode) {
   }
   if (groupBy === 'setup') {
     if (mode === 'backtest') return [trade.strategy || 'ללא אסטרטגיה'];
-    const setups = tradeSetups(trade);
+    // Stored setups win. A trade written after the form dropped that field
+    // has none, so the entry trigger is the one key. Both empty → ללא סטאפ.
+    const setups = effectiveSetups(trade);
     return setups.length ? setups : ['ללא סטאפ'];
   }
   const instant = instantOf(mode === 'backtest'
@@ -51,7 +53,8 @@ function groupKeys(trade, groupBy, mode) {
 
 /**
  * One bucket per session, setup, weekday, or hour.
- * A live trade with several setups is counted in each. Weekday and hour use
+ * A live trade with several stored setups is counted in each. A live trade
+ * with no stored setups is counted once under its entry trigger. Weekday and hour use
  * Asia/Jerusalem. Live groups are closed trades; backtest groups are the
  * rows in the stats window. Dollar P&L is null for backtests.
  */

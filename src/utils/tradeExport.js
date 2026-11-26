@@ -6,7 +6,7 @@
 
 import { isClosedTrade, signedTradeR, tradeNetPercent } from './calculations';
 import { customCsvHeader, readCustomValue } from './customTradeFields';
-import { tradeSetups } from './setupStats';
+import { effectiveSetups } from './setupStats';
 import { formatDateTime } from './formatters';
 
 export const ASSET_CLASS_LABELS = { crypto: 'קריפטו', futures_cme: 'חוזים עתידיים', stocks: 'מניות' };
@@ -109,7 +109,10 @@ export function journalCsvRow(t, defs = []) {
     round(Number.isFinite(pnlPct) ? pnlPct : 0), round(netR), t.strategy || '',
     t.timeframe || '', statusLabel(t), t.source || 'manual', t.entryReason || '', t.notes || '',
     list(t.tags), t.emotionBefore || '', t.emotionAfter || '', list(t.mistakes), t.confidenceRating ?? '',
-    tradeSetups(t).join(' | '),
+    // Stored setups. When that list is empty, the entry trigger fills the
+    // column so a trade saved from the current form is not a blank cell.
+    // A trade that still has setups keeps those names and not the trigger.
+    effectiveSetups(t).join(' | '),
     ...(Array.isArray(defs) ? defs : []).map((field) => {
       const value = readCustomValue(t, field);
       return value == null ? '' : value;

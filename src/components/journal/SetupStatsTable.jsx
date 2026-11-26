@@ -12,16 +12,16 @@ const pnlColor = (v) => (v > 0 ? 'text-profit' : v < 0 ? 'text-loss' : 'text-tex
 export default function SetupStatsTable({ stats, onSetupClick }) {
   return (
     <div className="bg-bg-secondary border border-border-primary rounded-xl p-4 sm:p-5 mb-6">
-      <h3 className="text-sm font-semibold text-text-primary mb-1">ביצועים לפי סטאפ</h3>
-      <p className="text-[11px] text-text-muted mb-3">R ממוצע ותוחלת מחושבים מ-R נטו, כמו בכותרת היומן.</p>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">ביצועים לפי טריגר</h3>
+      <p className="text-[11px] text-text-muted mb-3">לפי טריגר הכניסה. עסקה ישנה עם סטאפ שמור נספרת לפי הסטאפ. R ממוצע ותוחלת מחושבים מ-R נטו, כמו בכותרת היומן.</p>
       {!stats?.length ? (
-        <p className="text-xs text-text-secondary">תייג עסקאות בסטאפ (LPS, Spring, פריצה…) כדי לראות כאן את הביצועים.</p>
+        <p className="text-xs text-text-secondary">בחר טריגר כניסה (LPS, Spring, פריצה…) כדי לראות כאן את הביצועים.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs sm:text-sm min-w-[36rem]">
             <thead>
               <tr className="text-[11px] text-text-muted border-b border-border-primary">
-                <th className="text-right pb-2 font-medium">סטאפ</th>
+                <th className="text-right pb-2 font-medium">טריגר</th>
                 <th className="text-right pb-2 font-medium">עסקאות</th>
                 <th className="text-right pb-2 font-medium">% הצלחה</th>
                 <th className="text-right pb-2 font-medium">R ממוצע</th>
