@@ -29,10 +29,10 @@ export default function BusinessCharts({ series, currency }) {
   const money = (value) => formatBusinessAmount(value, currency, { signed: true });
 
   return (
-    <div data-testid="business-chart" data-currency={currency} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-      <Card className="p-4 md:p-5 min-h-[280px] flex flex-col">
-        <h2 className="text-sm font-semibold text-text-primary mb-3">נטו לפי קטגוריה</h2>
-        <div className="h-[220px]">
+    <div data-testid="business-chart" data-currency={currency} className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      <Card className="flex flex-col p-3">
+        <h2 className="mb-2 text-[13px] font-semibold text-text-primary">נטו לפי קטגוריה</h2>
+        <div className="h-[168px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={series}>
               <XAxis dataKey="name" tick={chartTick} axisLine={false} tickLine={false} interval={0} />
@@ -52,10 +52,10 @@ export default function BusinessCharts({ series, currency }) {
         </div>
       </Card>
 
-      <Card className="p-4 md:p-5 min-h-[280px] flex flex-col">
-        <h2 className="text-sm font-semibold text-text-primary mb-3">הרכב לפי קטגוריה</h2>
+      <Card className="flex flex-col p-3">
+        <h2 className="mb-1 text-[13px] font-semibold text-text-primary">הרכב לפי קטגוריה</h2>
         {pie.length > 0 && (
-          <div className="h-[180px]">
+          <div className="h-[148px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={pie} dataKey="magnitude" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={68} paddingAngle={3}>
@@ -66,7 +66,7 @@ export default function BusinessCharts({ series, currency }) {
             </ResponsiveContainer>
           </div>
         )}
-        <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-text-secondary mt-2">
+        <div className="mt-1.5 flex flex-wrap justify-center gap-x-2.5 gap-y-1 text-[11px] text-text-secondary">
           {series.map((row) => (
             <span key={row.key} className="inline-flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full" style={{ background: COLORS[row.key] || COLORS.other }} />
