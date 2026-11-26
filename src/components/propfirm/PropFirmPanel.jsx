@@ -146,37 +146,44 @@ export default function PropFirmPanel({ propFirm, trades, onEdit }) {
         </div>
       )}
 
-      {/* Balance + the road to the target */}
-      <div className="px-3 sm:px-4 pt-3">
-        <div className="flex items-end justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] text-text-muted">יתרה</p>
-            <FitText as="div" dir="ltr" className="num-mono text-xl font-extrabold text-text-primary" style={{ textAlign: 'right' }}>
-              {money(ev.balance)}
-            </FitText>
-          </div>
-          <div className="text-left shrink-0">
-            <p dir="ltr" className={`num-mono text-sm font-bold ${tone(ev.totalPnl)}`}>{formatCurrency(ev.totalPnl)}</p>
-            <p dir="ltr" className={`num-mono text-[11px] ${tone(ev.totalPnl)}`}>{formatPercent(pnlPct)}</p>
-          </div>
+      {/* Balance and the road to the target, in two tight rows.
+          The figures sit together, and a thin bar sits between the target
+          and what is left. */}
+      <div className="px-3 sm:px-4 pt-2">
+        <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 min-w-0">
+          <span dir="ltr" title="יתרה" className="num-mono text-lg font-extrabold leading-tight text-text-primary">
+            {money(ev.balance)}
+          </span>
+          <span dir="ltr" className={`num-mono text-sm font-bold leading-tight ${tone(ev.totalPnl)}`}>{formatCurrency(ev.totalPnl)}</span>
+          <span dir="ltr" className={`num-mono text-xs font-semibold leading-tight ${tone(ev.totalPnl)}`}>{formatPercent(pnlPct)}</span>
         </div>
         {target ? (
-          <div className="mt-2">
-            <div className="flex items-center justify-between gap-2 text-[11px] mb-1">
-              <span className="text-text-muted">
-                יעד רווח <span className="num-mono text-text-secondary" dir="ltr">{money(target.amountUsd)}</span>
+          <div className="mt-1.5">
+            <div className="flex items-center gap-2 min-w-0 text-[11px] leading-tight">
+              <span className="text-text-muted shrink-0 whitespace-nowrap">
+                יעד רווח <bdi className="num-mono text-text-secondary">{money(target.amountUsd)}</bdi>
               </span>
-              <span className={`inline-flex items-center gap-1.5 ${target.reached ? 'text-profit font-semibold' : 'text-text-muted'}`}>
+              <div
+                className="h-1 min-w-4 flex-1 rounded-full bg-white/12 overflow-hidden"
+                dir="rtl"
+                role="progressbar"
+                aria-valuenow={Math.round(target.progressPct)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="התקדמות ליעד הרווח"
+              >
+                <div
+                  className={`h-full rounded-full transition-[width] duration-500 ${target.reached ? 'bg-profit' : 'bg-accent-primary'}`}
+                  style={{ width: `${target.progressPct}%` }}
+                />
+              </div>
+              <span className={`shrink-0 whitespace-nowrap inline-flex items-center gap-1 ${target.reached ? 'text-profit font-semibold' : 'text-text-muted'}`}>
                 {target.reached
                   ? <span>היעד הושג</span>
                   : <span>נותרו <bdi className="num-mono text-text-secondary">{money(target.remainingUsd)}</bdi></span>}
                 <span aria-hidden>·</span>
                 <bdi className="num-mono">{Math.round(target.progressPct)}%</bdi>
               </span>
-            </div>
-            <div className="h-2 w-full rounded-full bg-bg-tertiary overflow-hidden" dir="rtl">
-              <div className={`h-full rounded-full transition-[width] duration-500 ${target.reached ? 'bg-profit' : 'bg-accent-primary'}`}
-                style={{ width: `${target.progressPct}%` }} />
             </div>
             {target.reached && ev.pending.length > 0 && (
               <p className="mt-1 text-[11px] text-breakeven">
