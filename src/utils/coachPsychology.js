@@ -24,8 +24,8 @@ function group(g) {
 // the model receives finished numbers and is only allowed to phrase them.
 // Returns null when there is nothing to cross-reference, so the caller can omit
 // the key entirely rather than send an empty shell.
-export function buildPsychologyStats(trades, morningEntries, eveningEntries) {
-  const m = computeMentalStats(trades, morningEntries, eveningEntries);
+export function buildPsychologyStats(trades, morningEntries, eveningEntries, routineItems) {
+  const m = computeMentalStats(trades, morningEntries, eveningEntries, routineItems);
   if (!m.totalCrossDays) return null;
 
   // Every bucket is expressed as a delta against the baseline, so "60% win

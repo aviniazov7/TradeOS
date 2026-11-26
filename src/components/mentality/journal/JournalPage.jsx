@@ -94,6 +94,7 @@ function LoadingSections() {
 export default function JournalPage({
   kind, icon, title, labels, entries, todayEntry, loading, onSave, onDelete,
   emptyForm, fromEntry, toPayload, required, requiredSection = {}, renderForm, renderSummary, nextStep,
+  routineItems, routineRetired,
 }) {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -212,7 +213,13 @@ export default function JournalPage({
       />
 
       {activeTab === 'history' ? (
-        <JournalHistory entries={entries} type={kind} onDeleteEntry={handleDelete} />
+        <JournalHistory
+          entries={entries}
+          type={kind}
+          onDeleteEntry={handleDelete}
+          routineItems={routineItems}
+          routineRetired={routineRetired}
+        />
       ) : view === 'loading' ? (
         <LoadingSections />
       ) : view === 'completed' ? (

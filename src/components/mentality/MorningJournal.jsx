@@ -10,11 +10,13 @@ import { EMOTION_OPTIONS, emotionLabel, inputCls, focusCls } from './journal/jou
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { useTradingPlans } from '../../hooks/useTradingPlans';
 import { pickActivePlan } from '../../utils/pickActivePlan';
-import { PRE_MARKET_CHECKLIST } from '../../utils/constants';
+import { useMorningRoutine } from '../../hooks/useMorningRoutine';
+import RoutineChecklist from './journal/RoutineChecklist';
 import {
   emptyMorningForm, morningFormFromEntry, morningPayload, MORNING_REQUIRED, rulesFromPlan, findYesterdayEntry,
   SLEEP_OPTIONS, BIAS_OPTIONS, labelOf,
 } from '../../utils/mentalityJournalForm';
+import { resolveRoutineLabel, routineProgress } from '../../utils/morningRoutine';
 
 // Morning journal — four short steps on one page:
 //   1 מצב          how I feel, readiness 1–10, sleep
@@ -23,15 +25,24 @@ import {
 //   4 כוונה ליום    one intention (+ optional reminder / gratitude)
 // Saved → a completed summary with "ערוך" (see JournalPage).
 
-const ROUTINE_OPTIONS = PRE_MARKET_CHECKLIST.map((c) => ({ value: c.key, label: c.label }));
 const LABELS = { done: 'יומן הבוקר הושלם', save: 'שמור יומן בוקר', saved: 'יומן הבוקר נשמר', updated: 'יומן הבוקר עודכן' };
 const REQUIRED_SECTION = { emotion: 'm-state', readinessLevel: 'm-state', mainGoal: 'm-intent' };
 const NEXT_STEP = { to: '/mentality/evening', title: 'יומן ערב', text: 'נפתח ב-19:00 לסיכום יום המסחר' };
 
-const routineLabel = (key) => PRE_MARKET_CHECKLIST.find((c) => c.key === key)?.label || key;
+function checkedRoutineIds(entry) {
+  const raw = Array.isArray(entry?.preMarketChecklist) ? entry.preMarketChecklist : [];
+  const seen = new Set();
+  const ids = [];
+  for (const id of raw) {
+    if (typeof id !== 'string' || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
 
-function MorningSummary({ entry }) {
-  const routine = Array.isArray(entry.preMarketChecklist) ? entry.preMarketChecklist : [];
+function MorningSummary({ entry, routineItems, routineRetired }) {
+  const routine = checkedRoutineIds(entry);
   const rulesChecked = Array.isArray(entry.rulesChecked) ? entry.rulesChecked : [];
   const appreciate = (entry.thingsIAppreciate || []).filter((t) => t && t.trim());
   return (
@@ -43,7 +54,7 @@ function MorningSummary({ entry }) {
           { label: 'מוכנות', value: entry.readinessLevel ? `${entry.readinessLevel}/10` : '' },
           { label: 'שינה', value: labelOf(SLEEP_OPTIONS, entry.sleepQuality) },
           { label: 'הטיית שוק', value: labelOf(BIAS_OPTIONS, entry.marketBias) },
-          { label: 'שגרת בוקר', value: `${routine.length}/${PRE_MARKET_CHECKLIST.length}` },
+          { label: 'שגרת בוקר', value: routineProgress(routine, routineItems) },
           { label: 'כללים', value: entry.rulesTotal ? `${rulesChecked.length}/${entry.rulesTotal}` : '' },
         ]}
       />
@@ -54,8 +65,10 @@ function MorningSummary({ entry }) {
         <div>
           <p className="text-[11px] font-medium text-text-muted mb-1.5">שגרה שביצעתי</p>
           <ul className="flex flex-wrap gap-1.5">
-            {routine.map((k) => (
-              <li key={k} className="rounded-lg bg-bg-tertiary border border-border-primary px-2 py-1 text-xs text-text-secondary">{routineLabel(k)}</li>
+            {routine.map((id) => (
+              <li key={id} className="rounded-lg bg-bg-tertiary border border-border-primary px-2 py-1 text-xs text-text-secondary">
+                {resolveRoutineLabel(id, { items: routineItems, retired: routineRetired })}
+              </li>
             ))}
           </ul>
         </div>
@@ -72,7 +85,10 @@ export default function MorningJournal() {
   } = useMentalityJournals();
   const { plans } = useTradingPlans();
   const { rules, source, planName } = useMemo(() => rulesFromPlan(pickActivePlan(plans)), [plans]);
+  const routine = useMorningRoutine();
   const yesterdayLesson = findYesterdayEntry(eveningEntries)?.lessonsLearned?.trim() || '';
+  const routineItems = routine.ready ? routine.items : undefined;
+  const routineRetired = routine.ready ? routine.retired : undefined;
 
   const toPayload = useCallback((form, date) => morningPayload(form, { date, rules, planName }), [rules, planName]);
 
@@ -125,11 +141,21 @@ export default function MorningJournal() {
         </JournalSection>
 
         <JournalSection id="m-rules" n={3} title="שגרה וכללים" subtitle="מה כבר עשיתי ולאילו כללים אני מתחייב" optional>
-          <Field label="שגרת בוקר שביצעתי">
-            {({ labelId }) => (
-              <OptionGroup type="multi" options={ROUTINE_OPTIONS} value={form.preMarketChecklist} onChange={(v) => update('preMarketChecklist', v)} ariaLabelledBy={labelId} />
-            )}
-          </Field>
+          {routine.ready && routine.doc ? (
+            <RoutineChecklist
+              doc={routine.doc}
+              checked={form.preMarketChecklist}
+              onCheckedChange={(v) => update('preMarketChecklist', v)}
+              onReplace={routine.replace}
+              disabled={routine.saving}
+            />
+          ) : (
+            <div className="space-y-1.5" aria-hidden>
+              {Array.from({ length: 6 }, (_, i) => (
+                <div key={i} className="h-11 rounded-xl bg-bg-tertiary border border-border-primary animate-pulse" />
+              ))}
+            </div>
+          )}
           <Field
             label={source === 'plan' ? `כללי התוכנית${planName ? `: ${planName}` : ''}` : 'כללי מסחר'}
             hint={source === 'plan' ? null : (
@@ -200,7 +226,11 @@ export default function MorningJournal() {
       required={MORNING_REQUIRED}
       requiredSection={REQUIRED_SECTION}
       renderForm={renderForm}
-      renderSummary={(entry) => <MorningSummary entry={entry} />}
+      renderSummary={(entry) => (
+        <MorningSummary entry={entry} routineItems={routineItems} routineRetired={routineRetired} />
+      )}
+      routineItems={routineItems}
+      routineRetired={routineRetired}
       nextStep={NEXT_STEP}
     />
   );

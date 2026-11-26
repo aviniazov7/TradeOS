@@ -1,11 +1,12 @@
-import { MENTALITY_EMOTIONS, PRE_MARKET_CHECKLIST } from './constants';
+import { MENTALITY_EMOTIONS } from './constants';
 import { isClosedTrade, localDayKey, winRateOf, safePnl } from './calculations';
+import { routineCatalog } from './morningRoutine';
 
 // Pure cross-reference between the mentality journals and the trades that were
 // closed on the same day. Extracted out of useMentalStats so the AI coach can
 // compute the exact same numbers outside of React — the model is never asked to
 // derive a statistic, only to phrase one we already computed.
-export function computeMentalStats(trades, morningEntries, eveningEntries) {
+export function computeMentalStats(trades, morningEntries, eveningEntries, routineItems) {
   // 1. Only closed trades
   const closed = (trades || []).filter(isClosedTrade);
 
@@ -124,20 +125,22 @@ export function computeMentalStats(trades, morningEntries, eveningEntries) {
     ? (lossDaysReadiness.reduce((a, b) => a + b, 0) / lossDaysReadiness.length).toFixed(1)
     : '-';
 
-  // 7. Checklist impact
-  const checklistStats = PRE_MARKET_CHECKLIST.map((item) => {
+  // 7. Checklist impact. The catalog is the trader's routine when one is
+  // passed, otherwise the built-in six. Unknown ids on old entries are
+  // ignored here; the journal still renders a fallback label for them.
+  const checklistStats = routineCatalog(routineItems).map((item) => {
     const withItem = [];
     const withoutItem = [];
     crossDays.forEach((day) => {
-      const checklist = day.morning.preMarketChecklist || [];
-      if (checklist.includes(item.key)) {
+      const checklist = Array.isArray(day.morning.preMarketChecklist) ? day.morning.preMarketChecklist : [];
+      if (checklist.includes(item.id)) {
         withItem.push(...day.trades);
       } else {
         withoutItem.push(...day.trades);
       }
     });
     return {
-      key: item.key,
+      key: item.id,
       label: item.label,
       with: calcGroupStats(withItem),
       without: calcGroupStats(withoutItem),

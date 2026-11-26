@@ -8,6 +8,7 @@ import BreathingExercise from './BreathingExercise';
 import { MoodWeekTile, MentalStatsTile, JourneyTile } from './ZoneTiles';
 import { tileItem } from './zoneStyle';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
+import { useMorningRoutine } from '../../hooks/useMorningRoutine';
 import {
   buildWeek, weekSummary, journalStreak, headlineMentalStat, journalWindowState,
 } from '../../utils/mentalityDashboard';
@@ -42,6 +43,7 @@ function journalTile(kind, entry, now, loading) {
 export default function MentalityZone() {
   const now = useMinuteClock();
   const { morningEntries, eveningEntries, todayMorning, todayEvening, loading } = useMentalityJournals();
+  const routine = useMorningRoutine();
 
   const week = useMemo(() => buildWeek(morningEntries, eveningEntries, now), [morningEntries, eveningEntries, now]);
   const summary = useMemo(() => weekSummary(week), [week]);
@@ -88,7 +90,13 @@ export default function MentalityZone() {
       <m.div variants={stagger} initial="hidden" animate="visible" className="space-y-4">
         <section aria-label="היומנים של היום" className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <m.div variants={tileItem} className="min-w-0">
-            <JournalTodayCard kind="morning" entry={todayMorning} now={now} loading={loading} />
+            <JournalTodayCard
+              kind="morning"
+              entry={todayMorning}
+              now={now}
+              loading={loading}
+              routineItems={routine.ready ? routine.items : undefined}
+            />
           </m.div>
           <m.div variants={tileItem} className="min-w-0">
             <JournalTodayCard kind="evening" entry={todayEvening} now={now} loading={loading} />

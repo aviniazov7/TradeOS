@@ -3,9 +3,10 @@ import { m } from 'framer-motion';
 import { Calendar, Eye, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../shared/Modal';
-import { MENTALITY_EMOTIONS, PRE_MARKET_CHECKLIST } from '../../utils/constants';
+import { MENTALITY_EMOTIONS } from '../../utils/constants';
 import { formatDate } from '../../utils/formatters';
 import { SLEEP_OPTIONS, BIAS_OPTIONS, labelOf } from '../../utils/mentalityJournalForm';
+import { resolveRoutineLabel } from '../../utils/morningRoutine';
 
 const staggerContainer = {
   hidden: {},
@@ -22,12 +23,7 @@ function getEmotionDisplay(key) {
   return found ? `${found.emoji} ${found.label}` : key || '-';
 }
 
-function getChecklistLabel(key) {
-  const found = PRE_MARKET_CHECKLIST.find((c) => c.key === key);
-  return found ? found.label : key;
-}
-
-function ViewMorningModal({ entry, isOpen, onClose }) {
+function ViewMorningModal({ entry, isOpen, onClose, routineItems, routineRetired }) {
   if (!entry) return null;
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`יומן בוקר - ${formatDate(entry.date)}`}>
@@ -82,9 +78,9 @@ function ViewMorningModal({ entry, isOpen, onClose }) {
           <div>
             <span className="text-xs text-text-muted block mb-1.5">שגרת פרה-מרקט</span>
             <div className="flex flex-wrap gap-1.5">
-              {entry.preMarketChecklist.map((key) => (
+              {entry.preMarketChecklist.filter((key) => typeof key === 'string' && key).map((key) => (
                 <span key={key} className="text-xs bg-accent-primary/10 text-accent-primary px-2.5 py-1 rounded-lg">
-                  {getChecklistLabel(key)}
+                  {resolveRoutineLabel(key, { items: routineItems, retired: routineRetired })}
                 </span>
               ))}
             </div>
@@ -197,7 +193,7 @@ function ViewEveningModal({ entry, isOpen, onClose }) {
   );
 }
 
-export default function JournalHistory({ entries, type, onDeleteEntry }) {
+export default function JournalHistory({ entries, type, onDeleteEntry, routineItems, routineRetired }) {
   const [viewEntry, setViewEntry] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -285,7 +281,13 @@ export default function JournalHistory({ entries, type, onDeleteEntry }) {
 
       {/* View Modal */}
       {type === 'morning' ? (
-        <ViewMorningModal entry={viewEntry} isOpen={!!viewEntry} onClose={() => setViewEntry(null)} />
+        <ViewMorningModal
+          entry={viewEntry}
+          isOpen={!!viewEntry}
+          onClose={() => setViewEntry(null)}
+          routineItems={routineItems}
+          routineRetired={routineRetired}
+        />
       ) : (
         <ViewEveningModal entry={viewEntry} isOpen={!!viewEntry} onClose={() => setViewEntry(null)} />
       )}

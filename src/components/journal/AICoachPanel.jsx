@@ -13,7 +13,8 @@ import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
 import { generateCoachReport } from '../../services/aiCoachService';
 import { useAiUsage } from '../../hooks/useAiUsage';
 import { dailyAiQuotaMessage, isDailyAiQuotaExhausted } from '../../utils/aiQuotaGate';
-import { getUserCollectionDocs } from '../../services/firestoreService';
+import { getUserCollectionDocs, getUserSetting } from '../../services/firestoreService';
+import { MORNING_ROUTINE_SETTING, normalizeRoutineDoc } from '../../utils/morningRoutine';
 import { buildCoachStats, coachScopeTrades } from '../../utils/coachStats';
 import {
   conclusionsReady, directionLabelHe, hebrewDirections, NOT_ENOUGH_DATA_NOTE,
@@ -605,7 +606,21 @@ export default function AICoachPanel({ trades }) {
         const j = await loadMentalityJournals();
         // Same trade window buildCoachStats used, so a free user doesn't get
         // this-month headline numbers next to an all-time psychology section.
-        const psych = j && buildPsychologyStats(coachScopeTrades(trades, { premium: isPremium }), j.morning, j.evening);
+        // A missing routine document is the built-in list. A failed read falls
+        // back to that same list so the report still goes out.
+        let routineItems;
+        try {
+          const routineDoc = await getUserSetting(user.uid, MORNING_ROUTINE_SETTING);
+          routineItems = normalizeRoutineDoc(routineDoc).items;
+        } catch {
+          routineItems = undefined;
+        }
+        const psych = j && buildPsychologyStats(
+          coachScopeTrades(trades, { premium: isPremium }),
+          j.morning,
+          j.evening,
+          routineItems,
+        );
         if (psych) built.psychology = forModel(psych);
       } catch {
         journalsRef.current = null;
