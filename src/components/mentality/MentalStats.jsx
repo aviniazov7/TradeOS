@@ -7,6 +7,7 @@ import { headerIconBtn } from '../shared/headerStyles';
 import { useMentalityJournals } from '../../hooks/useMentalityJournals';
 import { useTrades } from '../../hooks/useTrades';
 import { useMentalStats } from '../../hooks/useMentalStats';
+import { useMorningRoutine } from '../../hooks/useMorningRoutine';
 import MentalStatsSkeleton from './MentalStatsSkeleton';
 import { formatCurrency } from '../../utils/formatters';
 
@@ -14,7 +15,13 @@ export default function MentalStats() {
   const navigate = useNavigate();
   const { trades, loading: tradesLoading } = useTrades();
   const { morningEntries, eveningEntries, loading: journalsLoading } = useMentalityJournals();
-  const stats = useMentalStats(trades, morningEntries, eveningEntries);
+  const routine = useMorningRoutine();
+  const stats = useMentalStats(
+    trades,
+    morningEntries,
+    eveningEntries,
+    routine.ready ? routine.items : undefined,
+  );
 
   const loading = tradesLoading || journalsLoading;
 

@@ -4,6 +4,10 @@ Entries are grouped by `APP_VERSION`. Releases are tagged `vX.Y.Z` on `main`. Fr
 
 ## Unreleased
 
+### Added
+
+- The morning journal routine list can be renamed, reordered, extended, and deleted per account. A new account starts from the existing six items. Daily checks keep their ids, and a removed item still has a label on older entries.
+
 ### Changed
 
 - The prop-firm challenge card shows the balance, P&L, profit target, and remaining amount in two compact rows.

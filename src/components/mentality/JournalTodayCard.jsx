@@ -4,7 +4,8 @@ import Card from '../shared/Card';
 import Skeleton from '../shared/Skeleton';
 import { Medallion, TileGlow } from './ZoneTiles';
 import { ZONE_COLORS, tileInteractive, tint } from './zoneStyle';
-import { MENTALITY_EMOTIONS, PRE_MARKET_CHECKLIST } from '../../utils/constants';
+import { MENTALITY_EMOTIONS } from '../../utils/constants';
+import { routineProgress } from '../../utils/morningRoutine';
 import { journalWindowState, formatDuration, hhmm } from '../../utils/mentalityDashboard';
 
 // One of today's two journals as a primary card: where we are relative to its
@@ -29,13 +30,16 @@ const META = {
 
 const EMOTION_LABEL = Object.fromEntries(MENTALITY_EMOTIONS.map((e) => [e.key, e.label]));
 
-function facts(kind, entry) {
+function facts(kind, entry, routineItems) {
   if (!entry) return [];
   const out = [];
   if (kind === 'morning') {
     if (entry.emotion && EMOTION_LABEL[entry.emotion]) out.push(EMOTION_LABEL[entry.emotion]);
     if (entry.readinessLevel) out.push(`מוכנות ${entry.readinessLevel}/10`);
-    if (Array.isArray(entry.preMarketChecklist)) out.push(`צ׳קליסט ${entry.preMarketChecklist.length}/${PRE_MARKET_CHECKLIST.length}`);
+    if (Array.isArray(entry.preMarketChecklist)) {
+      const progress = routineProgress(entry.preMarketChecklist, routineItems);
+      if (progress) out.push(`צ׳קליסט ${progress}`);
+    }
   } else {
     if (entry.emotionAfter && EMOTION_LABEL[entry.emotionAfter]) out.push(EMOTION_LABEL[entry.emotionAfter]);
     if (entry.dayRating) out.push(`דירוג יום ${entry.dayRating}/10`);
@@ -87,7 +91,7 @@ function DayTrack({ win, now, color, status }) {
   );
 }
 
-export default function JournalTodayCard({ kind, entry, now, loading }) {
+export default function JournalTodayCard({ kind, entry, now, loading, routineItems }) {
   const meta = META[kind];
   const color = ZONE_COLORS[kind];
   const state = journalWindowState(kind, entry, now);
@@ -114,7 +118,7 @@ export default function JournalTodayCard({ kind, entry, now, loading }) {
     closed: { text: 'מלא עכשיו', primary: false },
   }[status];
 
-  const entryFacts = facts(kind, entry);
+  const entryFacts = facts(kind, entry, routineItems);
   const note = noteLine(kind, entry);
   const ChipIcon = chip.icon;
 

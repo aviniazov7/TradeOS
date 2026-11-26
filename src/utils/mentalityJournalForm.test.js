@@ -96,6 +96,10 @@ describe('morning form', () => {
     expect(requiredProgress(MORNING_REQUIRED, full).complete).toBe(true);
     expect(requiredProgress(MORNING_REQUIRED, { ...full, mainGoal: '   ' }).done).toBe(2);
   });
+  it('keeps a routine id after that item leaves the list', () => {
+    const form = { ...emptyMorningForm(), preMarketChecklist: ['news', 'r4', 3] };
+    expect(morningPayload(form, { date: '2026-11-26' }).preMarketChecklist).toEqual(['news', 'r4']);
+  });
   it('drops checked rules that are not in the shown list and trims text', () => {
     const form = { ...emptyMorningForm(), rulesChecked: ['r1', 'gone'], mainGoal: ' x ' };
     const out = morningPayload(form, { date: 'd', rules: ['r1', 'r2'], planName: 'Plan' });

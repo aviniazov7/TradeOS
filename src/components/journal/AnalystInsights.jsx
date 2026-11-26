@@ -4,7 +4,8 @@ import { formatCurrency } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { useJournalContext } from '../../contexts/JournalContext';
 import { useLinkedExchangeBalance } from '../../hooks/useLinkedExchangeBalance';
-import { getUserCollectionDocs } from '../../services/firestoreService';
+import { getUserCollectionDocs, getUserSetting } from '../../services/firestoreService';
+import { MORNING_ROUTINE_SETTING, normalizeRoutineDoc } from '../../utils/morningRoutine';
 import { superviseRisk } from '../../utils/riskSupervisor';
 import { auditPlan } from '../../utils/planAudit';
 import { buildPsychologyStats } from '../../utils/coachPsychology';
@@ -91,9 +92,17 @@ export default function AnalystInsights({ trades }) {
       getUserCollectionDocs(user.uid, 'tradingPlans'),
       getUserCollectionDocs(user.uid, 'morningJournals'),
       getUserCollectionDocs(user.uid, 'eveningJournals'),
+      getUserSetting(user.uid, MORNING_ROUTINE_SETTING),
     ])
-      .then(([plans, morning, evening]) => {
-        if (!cancelled) setSide({ plan: pickActivePlan(plans), journals: { morning, evening }, error: '' });
+      .then(([plans, morning, evening, routine]) => {
+        if (!cancelled) {
+          setSide({
+            plan: pickActivePlan(plans),
+            journals: { morning, evening },
+            routineItems: normalizeRoutineDoc(routine).items,
+            error: '',
+          });
+        }
       })
       .catch(() => {
         // Say what failed. Rendering "you have no plan" after a failed read
@@ -105,6 +114,7 @@ export default function AnalystInsights({ trades }) {
 
   const plan = side?.plan ?? null;
   const journals = side?.journals ?? null;
+  const routineItems = side?.routineItems;
   const loadError = side?.error || '';
   const loading = side === undefined;
   // A daily-loss cap is a percentage of what the trader HAS, not of what they
@@ -120,8 +130,8 @@ export default function AnalystInsights({ trades }) {
   const risk = useMemo(() => superviseRisk(trades, plan, { accountBalance }), [trades, plan, accountBalance]);
   const audit = useMemo(() => (plan ? auditPlan(plan, trades, { accountBalance }) : null), [plan, trades, accountBalance]);
   const psych = useMemo(
-    () => (journals ? buildPsychologyStats(trades, journals.morning, journals.evening) : null),
-    [journals, trades],
+    () => (journals ? buildPsychologyStats(trades, journals.morning, journals.evening, routineItems) : null),
+    [journals, trades, routineItems],
   );
 
   // Both sources measure dollars actually moved, so they rank on the same scale —
