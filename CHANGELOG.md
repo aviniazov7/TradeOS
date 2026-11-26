@@ -7,6 +7,7 @@ Entries are grouped by `APP_VERSION`. Releases are tagged `vX.Y.Z` on `main`. Fr
 ### Changed
 
 - The prop-firm challenge card shows the balance, P&L, profit target, and remaining amount in two compact rows.
+- The income and expenses page uses a compact monthly summary (income, expenses, net per currency) and a dense entry list. Calculations are unchanged.
 
 ## 2.4.1 - 2026-11-19
 
